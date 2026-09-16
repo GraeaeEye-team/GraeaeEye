@@ -1,0 +1,25 @@
+# Основные зависимости проекта GraeaeEye (Smart Credit / Cash Flow Navigator)
+fastapi>=0.110.0
+uvicorn[standard]>=0.28.0
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+
+# БД и Миграции (PostgreSQL)
+psycopg[binary,pool]>=3.1.18
+sqlalchemy>=2.0.28
+alembic>=1.13.1
+
+# Аналитика данных & ML (Предиктивное ядро)
+pandas>=2.2.0
+numpy>=1.26.0
+scikit-learn>=1.4.0
+xgboost>=2.0.0
+lightgbm>=4.3.0
+prophet>=1.1.5
+shap>=0.45.0
+
+# Обработка документов и AI-парсер
+openpyxl>=3.1.2
+python-multipart>=0.0.9
+requests>=2.31.0
+
