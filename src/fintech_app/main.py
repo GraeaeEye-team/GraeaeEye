@@ -8,7 +8,7 @@ from .api.router import api_router
 app = FastAPI(
     title="GraeaeEye API",
     description="Smart Credit & Cash Flow Risk Engine for SMEs",
-    version="0.1.1",
+    version="0.1.2",
 )
 
 app.include_router(api_router)
