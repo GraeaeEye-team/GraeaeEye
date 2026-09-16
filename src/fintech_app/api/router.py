@@ -3,7 +3,7 @@
 Регистрирует и объединяет эндпоинты модулей загрузки, прогнозирования и сценариев.
 """
 from fastapi import APIRouter
-from src.fintech_app.api.endpoints import forecast, scenarios, upload
+from .endpoints import forecast, scenarios, upload
 
 api_router = APIRouter(prefix="/api/v1")
 api_router.include_router(upload.router, tags=["Data Ingestion"])

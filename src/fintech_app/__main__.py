@@ -3,7 +3,7 @@
 Инициализирует экземпляр приложения, подключает роутеры API v1 и глобальные middleware.
 """
 from fastapi import FastAPI
-from src.fintech_app.api.router import api_router
+from .api.router import api_router
 
 app = FastAPI(
     title="GraeaeEye API",
