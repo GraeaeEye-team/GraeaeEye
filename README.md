@@ -1,3 +1,22 @@
+## Дебаг
+
+* Docker:
+```
+$ #См. https://docs.docker.com/get-started/get-docker/ для установки docker-а  
+$ git clone https://github.com/GraeaeEye-team/GraeaeEye.git
+$ cd GraeaeEye
+$ docker compose up --build
+```
+
+
+* Локально:
+```
+$ source /path/to/venv    
+$ pip install git+https://github.com/GraeaeEye-team/GraeaeEye.git
+$ python3 -m fintech_app
+```
+
+
 # Часть 1
 
 > Главная боль МСП: Прибыль ≠ Деньги.  
