@@ -16,7 +16,6 @@ $ pip install git+https://github.com/GraeaeEye-team/GraeaeEye.git
 $ python3 -m fintech_app
 ```
 
-После запуска смотрите доки [тут]("http://localhost:8000/docs" )
 
 # Часть 1
 
