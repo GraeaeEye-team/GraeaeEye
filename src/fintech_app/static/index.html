@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ru_RU">
+<head>
+	<title>GraeaeEye</title>
+	<meta charset="UTF-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<style></style>
+	<script>
+		function upd_status() {
+			var xmlHttp = new XMLHttpRequest();
+			xmlHttp.open( "GET", "/health", false );
+			xmlHttp.send( null );
+			var x = document.getElementById("status");
+			x.innerHTML = xmlHttp.responseText;
+		}
+		document.addEventListener('DOMContentLoaded', function() {
+			upd_status();
+		}, false);
+	</script>
+</head>
+<body>
+	<center><h1>Hello, World!</h1></center>
+	<button onclick="upd_status">health:</button><span id="status"></span>
+</body>
+</html>
