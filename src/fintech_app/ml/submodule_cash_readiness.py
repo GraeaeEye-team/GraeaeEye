@@ -3,17 +3,36 @@ Submodule 4.6: Immediate Cash Readiness Evaluator (ICR).
 Evaluates total liquid cash against immediate 30-day operational obligations (payroll, taxes, due payables).
 Calculates Cash Ratio (CR) and Days Cash on Hand (DCOH).
 """
+from datetime import date, datetime, timedelta
+from decimal import Decimal
 from typing import Any
-from fintech_app.ml.submodule_ownership import SubmoduleResult
-from fintech_app.shared.schemas.user_types import EvaluationStatus
+
+try:
+    from src.fintech_app.ml.base import (
+        BaseSubmoduleEvaluator,
+        SubmoduleResult,
+        clamp,
+        safe_div,
+    )
+    from src.fintech_app.shared.schemas.user_types import EvaluationStatus
+except ModuleNotFoundError:
+    from fintech_app.ml.base import (
+        BaseSubmoduleEvaluator,
+        SubmoduleResult,
+        clamp,
+        safe_div,
+    )
+    from fintech_app.shared.schemas.user_types import EvaluationStatus
 
 
-class ImmediateCashReadinessEvaluator:
+class ImmediateCashReadinessEvaluator(BaseSubmoduleEvaluator):
     """Evaluates short-term liquidity, cash ratio, and operational runway buffer."""
 
+    submodule_code: str = "ICR"
+    impact_weight: float = 0.15
+
     def __init__(self) -> None:
-        self.code = "ICR"
-        self.impact_weight = 0.15
+        super().__init__(submodule_code="ICR", impact_weight=0.15)
 
     def evaluate(self, snapshot: Any) -> SubmoduleResult:
         bank_accounts = getattr(snapshot, "bank_accounts", []) if snapshot else []
@@ -22,7 +41,7 @@ class ImmediateCashReadinessEvaluator:
 
         if not bank_accounts:
             return SubmoduleResult(
-                submodule_code=self.code,
+                submodule_code=self.submodule_code,
                 status=EvaluationStatus.DATA_ABSENT,
                 impact_weight=self.impact_weight,
                 verdict="DATA_ABSENT",
@@ -31,43 +50,85 @@ class ImmediateCashReadinessEvaluator:
                     "Runway_Buffer_Index": None,
                 },
                 summary="No bank account records present.",
-                diagnostic_report="[SUBMODULE 4.6: IMMEDIATE CASH READINESS]\nSTATUS: DATA_ABSENT\nVERDICT: BYPASSED",
+                diagnostic_report=(
+                    "[SUBMODULE 4.6: IMMEDIATE CASH READINESS]\n"
+                    "STATUS: DATA_ABSENT\n"
+                    "VERDICT: DATA_ABSENT"
+                ),
             )
+
+        # 1. Available Liquidity (MDL accounts)
+        mdl_accounts = [
+            acc for acc in bank_accounts
+            if str(getattr(acc, "currency", "MDL")).upper() == "MDL"
+        ]
+        # Fallback to all bank accounts if none explicitly marked MDL
+        active_accounts = mdl_accounts if mdl_accounts else bank_accounts
 
         liquid_cash = sum(
             float(getattr(acc, "current_balance", 0.0)) + float(getattr(acc, "overdraft_limit", 0.0))
-            for acc in bank_accounts
+            for acc in active_accounts
         )
 
-        payroll_txs = [
-            float(getattr(tx, "amount", 0.0)) for tx in transactions
-            if str(getattr(tx, "direction", "")).upper() == "OUTFLOW"
-            and str(getattr(tx, "category", "")).upper() == "PAYROLL"
-        ]
-        tax_txs = [
-            float(getattr(tx, "amount", 0.0)) for tx in transactions
-            if str(getattr(tx, "direction", "")).upper() == "OUTFLOW"
-            and str(getattr(tx, "category", "")).upper() == "TAX"
-        ]
+        # Determine evaluation date
+        raw_as_of = getattr(snapshot, "as_of_date", None)
+        if raw_as_of is None:
+            as_of_date = date.today()
+        elif isinstance(raw_as_of, datetime):
+            as_of_date = raw_as_of.date()
+        else:
+            as_of_date = raw_as_of
 
-        monthly_payroll = sum(payroll_txs) / 3.0 if payroll_txs else 0.0
-        monthly_taxes = sum(tax_txs) / 3.0 if tax_txs else 0.0
+        # 2. Monthly Payroll and Taxes: Average monthly outflow over trailing 3 months (90 days)
+        three_months_ago = as_of_date - timedelta(days=90)
 
-        due_payables_30d = sum(
-            float(getattr(inv, "gross_amount", 0.0)) for inv in invoices
-            if str(getattr(inv, "invoice_type", "")).upper() == "PAYABLE"
-            and str(getattr(inv, "status", "")).upper() in ("OUTSTANDING", "OVERDUE")
-        )
+        payroll_amounts = []
+        tax_amounts = []
+        for tx in transactions:
+            direction = str(getattr(tx, "direction", "")).upper()
+            category = str(getattr(tx, "category", "")).upper()
+            if direction == "OUTFLOW":
+                tx_date = getattr(tx, "timestamp", None) or getattr(tx, "transaction_date", None)
+                if isinstance(tx_date, datetime):
+                    tx_date = tx_date.date()
+                if tx_date is not None and (tx_date < three_months_ago or tx_date > as_of_date):
+                    continue
 
+                amt = float(getattr(tx, "amount", 0.0))
+                if category == "PAYROLL":
+                    payroll_amounts.append(amt)
+                elif category == "TAX":
+                    tax_amounts.append(amt)
+
+        monthly_payroll = sum(payroll_amounts) / 3.0 if payroll_amounts else 0.0
+        monthly_taxes = sum(tax_amounts) / 3.0 if tax_amounts else 0.0
+
+        # 3. Due Payables 30D: PAYABLE invoices with status OUTSTANDING (or OVERDUE) and due_date <= as_of_date + 30 days
+        due_payables_30d = 0.0
+        max_due_date = as_of_date + timedelta(days=30)
+        for inv in invoices:
+            inv_type = str(getattr(inv, "invoice_type", "")).upper()
+            status = str(getattr(inv, "status", "")).upper()
+            if inv_type == "PAYABLE" and status in ("OUTSTANDING", "OVERDUE"):
+                due_date = getattr(inv, "due_date", None)
+                if isinstance(due_date, datetime):
+                    due_date = due_date.date()
+                if due_date is not None and due_date > max_due_date:
+                    continue
+                due_payables_30d += float(getattr(inv, "gross_amount", 0.0))
+
+        # 4. Total Immediate Demand & Liquidity Ratios
         total_demand = monthly_payroll + monthly_taxes + due_payables_30d
         cash_ratio = liquid_cash / max(total_demand, 1.0)
 
         daily_burn = (monthly_payroll + monthly_taxes) / 30.0
-        dcoh = liquid_cash / max(daily_burn, 1.0) if daily_burn > 0 else 999.0
+        dcoh = liquid_cash / max(daily_burn, 1.0)
 
-        cash_readiness_idx = max(0.0, min(100.0, cash_ratio * 50.0))
-        runway_buffer_idx = max(0.0, min(100.0, (dcoh / 60.0) * 100.0))
+        # 5. Output Indices
+        cash_readiness_idx = clamp(cash_ratio * 50.0)  # CR >= 2.0 -> 100.0
+        runway_buffer_idx = clamp((dcoh / 60.0) * 100.0)  # 60+ days -> 100.0
 
+        # 6. Verdict Determination
         if cash_ratio >= 1.5:
             verdict = "LIQUID_AND_SOLVENT"
         elif cash_ratio >= 1.0:
@@ -87,7 +148,7 @@ class ImmediateCashReadinessEvaluator:
         )
 
         return SubmoduleResult(
-            submodule_code=self.code,
+            submodule_code=self.submodule_code,
             status=EvaluationStatus.SUCCESS,
             impact_weight=self.impact_weight,
             verdict=verdict,
@@ -99,3 +160,7 @@ class ImmediateCashReadinessEvaluator:
             diagnostic_report=report,
         )
 
+
+__all__ = [
+    "ImmediateCashReadinessEvaluator",
+]

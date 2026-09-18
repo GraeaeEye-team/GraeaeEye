@@ -4,33 +4,89 @@ Runs all 9 autonomous submodules concurrently against CompanyDataSnapshot,
 builds the standardized 18-element feature vector, and compiles the diagnostic report dossier.
 """
 from dataclasses import dataclass
-from datetime import date
-from typing import Any, Dict, List, Optional
+from datetime import date, datetime
+import logging
+from typing import Any
 from uuid import UUID
 
-from fintech_app.ml.submodule_ownership import OwnershipStructureEvaluator, SubmoduleResult
-from fintech_app.ml.submodule_reputation import WebReputationEvaluator
-from fintech_app.ml.submodule_macro import MacroSectorRiskEvaluator
-from fintech_app.ml.submodule_client_dep import ClientDependencyEvaluator
-from fintech_app.ml.submodule_supplier_dep import SupplierDependencyEvaluator
-from fintech_app.ml.submodule_cash_readiness import ImmediateCashReadinessEvaluator
-from fintech_app.ml.submodule_cash_stability import CashflowStabilityEvaluator
-from fintech_app.ml.submodule_receivables import ReceivablesQualityEvaluator
-from fintech_app.ml.submodule_credit_discipline import CreditDisciplineLeverageEvaluator
+try:
+    from src.fintech_app.ml.base import EvaluationStatus, SubmoduleResult
+    from src.fintech_app.ml.submodule_ownership import OwnershipStructureEvaluator
+    from src.fintech_app.ml.submodule_reputation import WebReputationEvaluator
+    from src.fintech_app.ml.submodule_macro import MacroSectorRiskEvaluator
+    from src.fintech_app.ml.submodule_client_dep import ClientDependencyEvaluator
+    from src.fintech_app.ml.submodule_supplier_dep import SupplierDependencyEvaluator
+    from src.fintech_app.ml.submodule_cash_readiness import ImmediateCashReadinessEvaluator
+    from src.fintech_app.ml.submodule_cash_stability import CashflowStabilityEvaluator
+    from src.fintech_app.ml.submodule_receivables import ReceivablesQualityEvaluator
+    from src.fintech_app.ml.submodule_credit_discipline import CreditDisciplineLeverageEvaluator
+except ModuleNotFoundError:
+    from fintech_app.ml.base import EvaluationStatus, SubmoduleResult
+    from fintech_app.ml.submodule_ownership import OwnershipStructureEvaluator
+    from fintech_app.ml.submodule_reputation import WebReputationEvaluator
+    from fintech_app.ml.submodule_macro import MacroSectorRiskEvaluator
+    from fintech_app.ml.submodule_client_dep import ClientDependencyEvaluator
+    from fintech_app.ml.submodule_supplier_dep import SupplierDependencyEvaluator
+    from fintech_app.ml.submodule_cash_readiness import ImmediateCashReadinessEvaluator
+    from fintech_app.ml.submodule_cash_stability import CashflowStabilityEvaluator
+    from fintech_app.ml.submodule_receivables import ReceivablesQualityEvaluator
+    from fintech_app.ml.submodule_credit_discipline import CreditDisciplineLeverageEvaluator
+
+logger: logging.Logger = logging.getLogger("smart_credit.ml")
 
 
 @dataclass
 class UnderwritingPipelineResult:
     """Result of the complete 9-submodule analytical pipeline run."""
+
     business_id: UUID
     as_of_date: date
-    feature_vector: List[Optional[float]]  # Exactly 18 numerical indices in canonical order
-    submodule_results: Dict[str, SubmoduleResult]
+    feature_vector: list[float | None]  # Exactly 18 numerical indices in canonical order
+    submodule_results: dict[str, SubmoduleResult]
     compiled_dossier_text: str
 
 
 class UnderwritingAnalyticalPipeline:
-    """Orchestrates parallel execution of all 9 analytical submodules."""
+    """Orchestrates sequential execution of all 9 analytical submodules with exception isolation."""
+
+    SUBMODULE_EMPTY_INDICES: dict[str, dict[str, float | None]] = {
+        "OS": {
+            "Ownership_Dispersion_Index": None,
+            "Governance_Independence_Index": None,
+        },
+        "WPR": {
+            "Legal_Cleanliness_Index": None,
+            "Public_Reputation_Index": None,
+        },
+        "MSR": {
+            "Sector_Vitality_Index": None,
+        },
+        "CD": {
+            "Client_Diversification_Index": None,
+            "Top_Client_Exposure_Index": None,
+        },
+        "SD": {
+            "Supplier_Diversification_Index": None,
+            "Supply_Chain_Robustness_Index": None,
+        },
+        "ICR": {
+            "Cash_Readiness_Index": None,
+            "Runway_Buffer_Index": None,
+        },
+        "CFS": {
+            "Revenue_Predictability_Index": None,
+            "Revenue_Trajectory_Index": None,
+        },
+        "RQ": {
+            "Receivables_Safety_Index": None,
+            "Client_Payment_Discipline_Index": None,
+        },
+        "ICDL": {
+            "Debt_Repayment_Discipline_Index": None,
+            "Debt_Service_Coverage_Index": None,
+            "Solvency_Leverage_Index": None,
+        },
+    }
 
     def __init__(self) -> None:
         self.submodules = [
@@ -45,17 +101,68 @@ class UnderwritingAnalyticalPipeline:
             CreditDisciplineLeverageEvaluator(),
         ]
 
-    def run_analysis(self, snapshot: Any, as_of_date: Optional[date] = None) -> UnderwritingPipelineResult:
-        """Executes all 9 submodules and aggregates feature vector and reports."""
-        business_id = getattr(snapshot, "business_id", None) or getattr(getattr(snapshot, "business", None), "business_id", None)
-        cutoff_date = as_of_date or getattr(snapshot, "as_of_date", date.today())
+    def run_analysis(
+        self, snapshot: Any, as_of_date: date | None = None
+    ) -> UnderwritingPipelineResult:
+        """
+        Executes all 9 submodules with per-submodule exception isolation,
+        aggregates the canonical 18-element feature vector, and compiles the diagnostic dossier.
+        """
+        raw_bid = (
+            getattr(snapshot, "business_id", None)
+            or getattr(getattr(snapshot, "business", None), "business_id", None)
+        )
+        if raw_bid is None:
+            business_id = UUID("00000000-0000-0000-0000-000000000000")
+        elif isinstance(raw_bid, str):
+            business_id = UUID(raw_bid)
+        else:
+            business_id = raw_bid
 
-        results: Dict[str, SubmoduleResult] = {}
+        if as_of_date is not None:
+            cutoff_date = as_of_date.date() if isinstance(as_of_date, datetime) else as_of_date
+        else:
+            raw_snap_date = getattr(snapshot, "as_of_date", None)
+            if raw_snap_date is not None:
+                cutoff_date = (
+                    raw_snap_date.date()
+                    if isinstance(raw_snap_date, datetime)
+                    else raw_snap_date
+                )
+            else:
+                cutoff_date = date.today()
+
+        results: dict[str, SubmoduleResult] = {}
+
         for sm in self.submodules:
-            res = sm.evaluate(snapshot)
-            results[res.submodule_code] = res
+            code = sm.submodule_code
+            try:
+                res = sm.evaluate(snapshot)
+                results[res.submodule_code] = res
+            except Exception as exc:
+                logger.error(
+                    "Submodule %s evaluation raised unexpected exception: %s",
+                    code,
+                    exc,
+                    exc_info=True,
+                )
+                empty_indices = dict(self.SUBMODULE_EMPTY_INDICES.get(code, {}))
+                results[code] = SubmoduleResult(
+                    submodule_code=code,
+                    status=EvaluationStatus.ERROR,
+                    impact_weight=sm.impact_weight,
+                    verdict="ERROR",
+                    indices=empty_indices,
+                    summary=f"Evaluation encountered error: {exc}",
+                    diagnostic_report=(
+                        f"[{code}]\n"
+                        f"STATUS: ERROR\n"
+                        f"VERDICT: ERROR\n"
+                        f"ERROR: {exc}"
+                    ),
+                )
 
-        # Construct 18-element feature vector in exact canonical order
+        # Construct 18-element feature vector strictly in canonical order
         os_res = results.get("OS")
         wpr_res = results.get("WPR")
         msr_res = results.get("MSR")
@@ -66,7 +173,7 @@ class UnderwritingAnalyticalPipeline:
         rq_res = results.get("RQ")
         icdl_res = results.get("ICDL")
 
-        feature_vector: List[Optional[float]] = [
+        feature_vector: list[float | None] = [
             os_res.indices.get("Ownership_Dispersion_Index") if os_res else None,
             os_res.indices.get("Governance_Independence_Index") if os_res else None,
             wpr_res.indices.get("Legal_Cleanliness_Index") if wpr_res else None,
@@ -87,8 +194,16 @@ class UnderwritingAnalyticalPipeline:
             icdl_res.indices.get("Solvency_Leverage_Index") if icdl_res else None,
         ]
 
-        # Compile plain text diagnostic dossier
-        dossier_sections = [res.diagnostic_report for res in results.values()]
+        assert len(feature_vector) == 18, (
+            f"Expected exactly 18 elements in canonical feature vector, but got {len(feature_vector)}"
+        )
+
+        # Compile plain text diagnostic dossier from non-empty diagnostic reports
+        dossier_sections = [
+            res.diagnostic_report.strip()
+            for res in results.values()
+            if res.diagnostic_report and res.diagnostic_report.strip()
+        ]
         compiled_dossier_text = "\n\n".join(dossier_sections)
 
         return UnderwritingPipelineResult(
@@ -100,7 +215,16 @@ class UnderwritingAnalyticalPipeline:
         )
 
 
-def run_full_ml_analysis(snapshot: Any) -> UnderwritingPipelineResult:
+def run_full_ml_analysis(
+    snapshot: Any, as_of_date: date | None = None
+) -> UnderwritingPipelineResult:
     """Convenience helper function to execute full pipeline analysis."""
     pipeline = UnderwritingAnalyticalPipeline()
-    return pipeline.run_analysis(snapshot)
+    return pipeline.run_analysis(snapshot, as_of_date=as_of_date)
+
+
+__all__ = [
+    "UnderwritingAnalyticalPipeline",
+    "UnderwritingPipelineResult",
+    "run_full_ml_analysis",
+]
