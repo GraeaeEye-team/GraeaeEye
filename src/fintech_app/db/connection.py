@@ -6,12 +6,6 @@ from dataclasses import dataclass
 from typing import Any, Optional
 
 
-@dataclass
-class Response:
-    error_code: int
-    data: Optional[dict[str, Any]] = None
-
-
 class Database:
     """Управление соединением и курсором подключения к PostgreSQL."""
 

@@ -1,10 +1,11 @@
-# SMART CREDIT SYSTEM: CORE INVESTMENT & UNDERWRITING ANALYTICAL ENGINE
-> TECHNICAL ARCHITECTURE & SPECIFICATION DOCUMENT (V2.0)
+================================================================================
+SMART CREDIT SYSTEM: CORE INVESTMENT & UNDERWRITING ANALYTICAL ENGINE
+TECHNICAL ARCHITECTURE & SPECIFICATION DOCUMENT (V2.0)
+================================================================================
 
-
-## 1. SYSTEM EXECUTIVE SUMMARY & ARCHITECTURAL PHILOSOPHY
-
-  1. Mission and Objectives
+1. SYSTEM EXECUTIVE SUMMARY & ARCHITECTURAL PHILOSOPHY
+--------------------------------------------------------------------------------
+1.1 Mission and Objectives
 The Core Analytical Engine evaluates the financial resilience, operational health,
 and investment attractiveness of Small and Medium Enterprises (SMEs). Traditional
 underwriting relies on historical financial statements ("rear-view mirror" metrics).
@@ -12,21 +13,21 @@ This engine is designed as a forward-looking early-warning system that synthesiz
 internal operational cash flows, contractual B2B transaction graphs, historical
 credit discipline, and external open-source intelligence.
 
-  2. Core Architectural Principles
-     * Decoupled Domain Isolation: The core engine is decomposed into 9 autonomous,
+1.2 Core Architectural Principles
+* Decoupled Domain Isolation: The core engine is decomposed into 9 autonomous,
   single-responsibility submodules. Each submodule evaluates a distinct dimension
   of investment and credit risk.
-     * Fault-Tolerant Graceful Degradation: Submodules possess zero inter-submodule
+* Fault-Tolerant Graceful Degradation: Submodules possess zero inter-submodule
   runtime dependencies. If underlying database records or external web scraping
   data are missing, corrupted, or incomplete for a specific domain, only the
   associated submodule safely skips execution (yielding null indicators). The
   remaining submodules continue uninterrupted.
-     * Dual-Output Contract: Every submodule executes deterministic financial,
+* Dual-Output Contract: Every submodule executes deterministic financial,
   statistical, and heuristic algorithms to output:
-        1. A standardized set of normalized numerical indices (bounded strictly 0.0 to 100.0).
-        2. A structured, human-readable plain-text diagnostic report containing explicit
+  1. A standardized set of normalized numerical indices (bounded strictly 0.0 to 100.0).
+  2. A structured, human-readable plain-text diagnostic report containing explicit
      verdicts, impact weight factors, and granular analytical breakdowns.
-     * Downstream ML Integration (Feature Space Provisioning): The normalized numerical
+* Downstream ML Integration (Feature Space Provisioning): The normalized numerical
   indices across all active submodules form an aggregated feature vector. This
   feature vector is consumed downstream by supervised machine learning models
   (e.g., Gradient Boosted Decision Trees / LightGBM) to compute a unified Investment
@@ -34,14 +35,15 @@ credit discipline, and external open-source intelligence.
   inference are decoupled from this analytical feature-extraction layer.
 
 
-## 2. RELATIONAL DATA LAYER: POSTGRESQL GRAPH SCHEMA
-
+2. RELATIONAL DATA LAYER: POSTGRESQL GRAPH SCHEMA
+--------------------------------------------------------------------------------
 The data layer maps raw accounting records, bank ledgers, and external feeds into
 a connected entity graph. Primary identifiers use RFC-4122 UUIDs. Monetary amounts
 are stored as fixed-point DECIMAL(18,2) to eliminate floating-point rounding errors.
 
-### CLUSTER 2.1: CORE CORPORATE IDENTITY & GOVERNANCE
-
+--------------------------------------------------------------------------------
+CLUSTER 2.1: CORE CORPORATE IDENTITY & GOVERNANCE
+--------------------------------------------------------------------------------
 * Table: businesses
   Represents foundational corporate identity, incorporation status, and governance.
   - business_id (UUID, PK): Unique enterprise identifier.
@@ -60,8 +62,9 @@ are stored as fixed-point DECIMAL(18,2) to eliminate floating-point rounding err
   - equity_percentage (DECIMAL(5,2), NOT NULL): Equity holding (0.00% to 100.00%).
   - is_management_member (BOOLEAN, NOT NULL): Flags if owner holds executive roles.
 
-### CLUSTER 2.2: EXTERNAL INTELLIGENCE & OPEN DATA
-
+--------------------------------------------------------------------------------
+CLUSTER 2.2: EXTERNAL INTELLIGENCE & OPEN DATA
+--------------------------------------------------------------------------------
 * Table: web_reputation
   Time-stamped snapshots gathered by background scraping agents and external APIs.
   - record_id (UUID, PK): Unique snapshot identifier.
@@ -82,8 +85,9 @@ are stored as fixed-point DECIMAL(18,2) to eliminate floating-point rounding err
   - sector_default_rate (DECIMAL(5,2), NOT NULL): Baseline loan default rate in sector.
   - risk_outlook_score (INT, NOT NULL): Regulatory/macro threat level (Scale 1 to 10).
 
-### CLUSTER 2.3: COMMERCIAL GRAPH & CASH FLOW LEDGER
-
+--------------------------------------------------------------------------------
+CLUSTER 2.3: COMMERCIAL GRAPH & CASH FLOW LEDGER
+--------------------------------------------------------------------------------
 * Table: counterparties
   The entity ledger of all trading partners identified in invoices and transfers.
   - counterparty_id (UUID, PK): Unique counterparty identifier.
@@ -127,9 +131,9 @@ are stored as fixed-point DECIMAL(18,2) to eliminate floating-point rounding err
   - liquidity_class (VARCHAR(24), NOT NULL): Enum ('IMMEDIATE_CASH', 'RESTRICTED_ESCROW',
                                                   'TERM_DEPOSIT').
 
-
-### CLUSTER 2.4: LIABILITIES & REPAYMENT TRACK RECORD
-
+--------------------------------------------------------------------------------
+CLUSTER 2.4: LIABILITIES & REPAYMENT TRACK RECORD
+--------------------------------------------------------------------------------
 * Table: credit_obligations
   Direct facilities, bank credits, factoring lines, and equipment leasing.
   - obligation_id (UUID, PK): Unique facility identifier.
@@ -143,42 +147,94 @@ are stored as fixed-point DECIMAL(18,2) to eliminate floating-point rounding err
   - past_due_90d_count (INT, DEFAULT 0): Historical delinquency instances (31-90 DPD).
   - historical_defaults_count (INT, DEFAULT 0): Severe defaults (90+ DPD / charge-offs).
 
+--------------------------------------------------------------------------------
+CLUSTER 2.5: WEB APPLICATION IDENTITY & EXECUTION TELEMETRY
+--------------------------------------------------------------------------------
+* Table: users
+  Stores user credentials, organizational affiliations, and RBAC states.
+  - user_id (UUID, PK): Unique user identifier (RFC-4122).
+  - email (VARCHAR(255), UNIQUE, NOT NULL): Corporate email address.
+  - password_hash (VARCHAR(255), NOT NULL): Cryptographic password digest.
+  - full_name (VARCHAR(128), NOT NULL): Legal name of underwriter or analyst.
+  - role (VARCHAR(32), DEFAULT 'ANALYST'): Enum ('ADMIN', 'UNDERWRITER', 'ANALYST').
+  - is_active (BOOLEAN, DEFAULT TRUE): Account status flag.
+  - created_at (TIMESTAMP WITH TIME ZONE, DEFAULT NOW()): Registration timestamp.
 
-## 3. EXTERNAL DATA ACQUISITION & OPEN-SOURCE SEARCH PIPELINE
+* Table: user_settings
+  Persists client workspace preferences.
+  - setting_id (UUID, PK): Unique preferences record.
+  - user_id (UUID, FK -> users.user_id ON DELETE CASCADE, UNIQUE, NOT NULL).
+  - ui_theme (VARCHAR(16), DEFAULT 'system'): Enum ('light', 'dark', 'system').
+  - terminal_sound_effects (BOOLEAN, DEFAULT FALSE): Audio toggle for live console logs.
+  - auto_expand_reports (BOOLEAN, DEFAULT TRUE): Viewport state preference.
 
+* Table: analysis_runs
+  Tracks evaluation lifecycle, ingested payloads, feature vectors, and LLM output.
+  - run_id (UUID, PK): Unique evaluation job identifier.
+  - user_id (UUID, FK -> users.user_id, NOT NULL): Requesting user.
+  - business_id (UUID, FK -> businesses.business_id, NULL): Link to business entity.
+  - status (VARCHAR(32), NOT NULL): Enum ('QUEUED', 'PARSING', 'PROCESSING', 'COMPLETED', 'FAILED', 'DEGRADED').
+  - input_company_name (VARCHAR(255), NOT NULL): Declared enterprise name.
+  - input_tax_id (VARCHAR(32), NOT NULL): Declared national tax ID.
+  - input_industry_code (VARCHAR(16), NOT NULL): Sector classification code.
+  - files_manifest (JSONB, NOT NULL): Uploaded file metadata.
+  - active_submodules (JSONB, NOT NULL): Enabled submodule codes.
+  - raw_indices_payload (JSONB, NULL): Aggregated 18-element numerical feature vector.
+  - submodules_reports (JSONB, NULL): Structured submodule verdicts and reports.
+  - llm_final_summary (TEXT, NULL): Generated narrative synthesis from LLM.
+  - universal_score (DECIMAL(5,2), NULL): Normalized overall score (0.00 to 100.00).
+  - failure_reason (TEXT, NULL): Stack trace or error message.
+  - created_at (TIMESTAMP WITH TIME ZONE, DEFAULT NOW()): Creation timestamp.
+  - completed_at (TIMESTAMP WITH TIME ZONE, NULL): Termination timestamp.
+
+* Table: analysis_logs
+  Console diagnostic messages emitted during submodule and pipeline execution.
+  - log_id (BIGSERIAL, PK): Incrementing event ID.
+  - run_id (UUID, FK -> analysis_runs.run_id ON DELETE CASCADE, NOT NULL).
+  - timestamp (TIMESTAMP WITH TIME ZONE, DEFAULT NOW()): Event timestamp.
+  - severity (VARCHAR(16), NOT NULL): Enum ('DEBUG', 'INFO', 'WARN', 'ERROR').
+  - stage (VARCHAR(32), NOT NULL): Stage emitting event.
+  - message (TEXT, NOT NULL): Telemetry log message.
+
+
+3. EXTERNAL DATA ACQUISITION & OPEN-SOURCE SEARCH PIPELINE
+--------------------------------------------------------------------------------
 The external search engine acts as an asynchronous enrichment pipeline that runs
 prior to submodule evaluation. It populates `web_reputation` and `macro_sector_metrics`.
 
-  1. Pipeline Ingestion Workflow
-     1. Identification Layer: The engine extracts the `tax_id` and `legal_name` of the
+3.1 Pipeline Ingestion Workflow
+1. Identification Layer: The engine extracts the `tax_id` and `legal_name` of the
    enterprise and initiates targeted workers.
-     2. Judicial & State Registry Scraping:
-        - Worker queries national public court registries and debt-enforcement portals.
-        - Parses open litigation records via headless browser scraping or open REST APIs.
-        - Extracts: active defendant lawsuits count and aggregate monetary claims.
-     3. Sanctions & AML Watchlists:
-        - Queries open AML, PEP, and international sanctions registries via fuzzy string
+2. Judicial & State Registry Scraping:
+   - Worker queries national public court registries and debt-enforcement portals.
+   - Parses open litigation records via headless browser scraping or open REST APIs.
+   - Extracts: active defendant lawsuits count and aggregate monetary claims.
+3. Sanctions & AML Watchlists:
+   - Queries open AML, PEP, and international sanctions registries via fuzzy string
      matching on entity and board member names.
-        - Flags binary matches (`is_in_sanctions_list`).
-     4. News & Digital Presence Scraping:
-        - Search workers query global and regional news syndications using search APIs
+   - Flags binary matches (`is_in_sanctions_list`).
+4. News & Digital Presence Scraping:
+   - Search workers query global and regional news syndications using search APIs
      (`"{legal_name}" AND (court OR debt OR fraud OR expansion OR contract)`).
-        - Scraped text snippets and news articles pass through a distilled LLM/NLP
+   - Scraped text snippets and news articles pass through a distilled LLM/NLP
      sentiment classification prompt.
-        - Returns a bounded float `news_sentiment_score` (-1.000 for highly negative,
+   - Returns a bounded float `news_sentiment_score` (-1.000 for highly negative,
      0.000 for neutral, +1.000 for strongly positive).
-      5. Macroeconomic Enrichment:
-         - Pulls current industry statistics from national bureaus and economic outlook
+5. Macroeconomic Enrichment:
+   - Pulls current industry statistics from national bureaus and economic outlook
      databases mapped directly to the company's `industry_code`.
 
 
-## 4. CORE ANALYTICAL ENGINE: 9 DECOUPLED SUBMODULES
+4. CORE ANALYTICAL ENGINE: 9 DECOUPLED SUBMODULES
+--------------------------------------------------------------------------------
 
-## GROUP 1: GOVERNANCE & EXTERNAL RISK
+================================================================================
+GROUP 1: GOVERNANCE & EXTERNAL RISK
+================================================================================
 
-
-### SUBMODULE 4.1: OWNERSHIP STRUCTURE (OS)
-
+--------------------------------------------------------------------------------
+SUBMODULE 4.1: OWNERSHIP STRUCTURE (OS)
+--------------------------------------------------------------------------------
 Domain Scope & Business Rationale:
 Examines capital stability, key-person risk, and governance integrity. Extreme equity
 concentration in a single individual who also serves as executive director introduces
@@ -212,8 +268,9 @@ NUMERICAL INDICES:
 SUMMARY: HHI_Shareholders calculated at <HHI>. Management holds <MOOR*100>% of equity.
 Independent directors occupy <independent_directors_count> of <total_board_seats> seats.
 
-### SUBMODULE 4.2: WEB PRESENCE & LEGAL REPUTATION (WPR)
-
+--------------------------------------------------------------------------------
+SUBMODULE 4.2: WEB PRESENCE & LEGAL REPUTATION (WPR)
+--------------------------------------------------------------------------------
 Domain Scope & Business Rationale:
 Uncovers hidden off-balance-sheet liabilities and systemic reputational risks. Active
 lawsuits against the company threaten unexpected capital outflows, while adverse news
@@ -253,8 +310,9 @@ NUMERICAL INDICES:
 SUMMARY: Identified <active_lawsuits_count> active lawsuits totaling <claims_amount> MDL.
 Sanctions check: <PASS/FAIL>. News sentiment classified at <news_sentiment_score>.
 
-### SUBMODULE 4.3: MACRO & SECTOR RISK (MSR)
-
+--------------------------------------------------------------------------------
+SUBMODULE 4.3: MACRO & SECTOR RISK (MSR)
+--------------------------------------------------------------------------------
 Domain Scope & Business Rationale:
 Isolates systemic market headwinds from company-specific execution. A profitable SME
 operating in a declining, highly leveraged industry faces elevated structural default
@@ -288,10 +346,13 @@ SUMMARY: Industry code <industry_code> exhibits YoY growth of <growth>% and aver
 rate of <default_rate>%. Macro sector threat index is rated <risk_outlook_score>/10.
 
 
-## GROUP 2: COMMERCIAL DIVERSIFICATION
+================================================================================
+GROUP 2: COMMERCIAL DIVERSIFICATION
+================================================================================
 
-### SUBMODULE 4.4: CLIENT DEPENDENCY (CD)
-
+--------------------------------------------------------------------------------
+SUBMODULE 4.4: CLIENT DEPENDENCY (CD)
+--------------------------------------------------------------------------------
 Domain Scope & Business Rationale:
 Quantifies customer concentration and single-point-of-failure revenue risk. If an SME
 derives over 50% of its revenues from a single buyer, the commercial failure or
@@ -328,8 +389,9 @@ NUMERICAL INDICES:
 SUMMARY: Customer HHI is <Customer_HHI>. Primary client accounts for <CR1>%, and top 3
 clients represent <CR3>% of total trailing 12-month commercial revenue.
 
-### SUBMODULE 4.5: SUPPLIER DEPENDENCY (SD)
-
+--------------------------------------------------------------------------------
+SUBMODULE 4.5: SUPPLIER DEPENDENCY (SD)
+--------------------------------------------------------------------------------
 Domain Scope & Business Rationale:
 Evaluates supply chain stability and single-source supplier vulnerability. Heavy
 reliance on a single vendor leaves an enterprise vulnerable to raw material supply
@@ -366,10 +428,14 @@ NUMERICAL INDICES:
 SUMMARY: Vendor HHI is <Vendor_HHI>. Largest supplier consumes <Primary_Vendor_Share>%
 of total procurement expenditures across <P> active operational suppliers.
 
-## GROUP 3: LIQUIDITY & CASH FLOW
 
-### SUBMODULE 4.6: IMMEDIATE CASH READINESS (ICR)
+================================================================================
+GROUP 3: LIQUIDITY & CASH FLOW
+================================================================================
 
+--------------------------------------------------------------------------------
+SUBMODULE 4.6: IMMEDIATE CASH READINESS (ICR)
+--------------------------------------------------------------------------------
 Domain Scope & Business Rationale:
 Detects imminent cash gap and insolvency risks. Operational profit on paper does
 not equate to cash; companies collapse when immediate liquid reserves fail to meet
@@ -407,8 +473,9 @@ NUMERICAL INDICES:
 SUMMARY: Available liquidity: <Liquid_Cash> MDL. Immediate 30-day obligations:
 <Total_Immediate_Demand> MDL. Cash Ratio is <CR>. Company maintains <DCOH> days cash runway.
 
-## SUBMODULE 4.7: CASH FLOW STABILITY (CFS)
-
+--------------------------------------------------------------------------------
+SUBMODULE 4.7: CASH FLOW STABILITY (CFS)
+--------------------------------------------------------------------------------
 Domain Scope & Business Rationale:
 Evaluates revenue volatility, seasonality, and incoming cash predictability over time.
 High revenue volatility introduces unexpected debt servicing shortfalls during trough
@@ -445,10 +512,13 @@ SUMMARY: Mean monthly revenue: <Mean_R> MDL. Coefficient of Variation: <CV_Reven
 Revenue growth trajectory slope is <Slope> per month.
 
 
-## GROUP 4: DEBT & ASSET QUALITY
+================================================================================
+GROUP 4: DEBT & ASSET QUALITY
+================================================================================
 
-### SUBMODULE 4.8: RECEIVABLES QUALITY (RQ)
-
+--------------------------------------------------------------------------------
+SUBMODULE 4.8: RECEIVABLES QUALITY (RQ)
+--------------------------------------------------------------------------------
 Domain Scope & Business Rationale:
 Examines trapped working capital and client repayment delinquency. High nominal
 accounts receivable balances can conceal bad debts where customers consistently delay
@@ -485,9 +555,9 @@ NUMERICAL INDICES:
 SUMMARY: Delinquent receivables represent <CER*100>% of total book receivables. Average
 payment delay past contractual due date is <Mean_Delay_Days> days. DSO stands at <DSO> days.
 
-
-### SUBMODULE 4.9: INTERNAL CREDIT DISCIPLINE & LEVERAGE (ICDL)
-
+--------------------------------------------------------------------------------
+SUBMODULE 4.9: INTERNAL CREDIT DISCIPLINE & LEVERAGE (ICDL)
+--------------------------------------------------------------------------------
 Domain Scope & Business Rationale:
 Evaluates the firm's historical repayment integrity and debt service leverage. Chronic
 delinquencies (30+ and 90+ DPD) signify institutional distress. Excessive debt-to-cash-flow
@@ -533,22 +603,23 @@ SUMMARY: Historical defaults: <historical_defaults_count>, 90-day DPD: <past_due
 
 
 5. EXECUTION LIFECYCLE, FEATURE VECTOR AGGREGATION & ML HAND-OFF
+--------------------------------------------------------------------------------
 
-  1. Orchestration Workflow
-     1. Request Reception: The engine receives an evaluation request targeting a `business_id`
+5.1 Orchestration Workflow
+1. Request Reception: The engine receives an evaluation request targeting a `business_id`
    and reference cutoff timestamp (supporting strict point-in-time underwriting discipline).
-     2. Data Pre-Fetch & Cache: The engine extracts connected entities from PostgreSQL
+2. Data Pre-Fetch & Cache: The engine extracts connected entities from PostgreSQL
    (businesses, shareholders, web_reputation, counterparties, invoices, transactions,
    credit_obligations).
-     3. Concurrent Submodule Execution: Submodules 4.1 through 4.9 execute in parallel worker
+3. Concurrent Submodule Execution: Submodules 4.1 through 4.9 execute in parallel worker
    threads. Each submodule runs pure mathematical evaluations on in-memory representations
    of the retrieved records.
-     4. Error Handling & Missing Data Isolation:
+4. Error Handling & Missing Data Isolation:
    - If a table returns zero rows (e.g., no external web data found), the respective
      submodule returns an explicit `STATUS: DATA_ABSENT` report and sets its indices to `NULL`.
    - Remaining submodules continue unhindered.
 
-  2. Feature Vector Aggregation Schema
+5.2 Feature Vector Aggregation Schema
 The analytical core concatenates the output scores into a standardized 18-element
 numerical feature vector:
 
@@ -573,7 +644,7 @@ V = [
   Solvency_Leverage_Index              // Submodule 4.9
 ]
 
-  3. Downstream ML Aggregator Hand-Off
+5.3 Downstream ML Aggregator Hand-Off
 * The numerical vector V is fed into a supervised Gradient Boosting Classifier (LightGBM/XGBoost).
 * Missing indicators (`NULL`) are passed natively to the gradient boosting algorithm
   without synthetic zero-filling, allowing the tree splits to treat missingness as an
@@ -581,5 +652,327 @@ V = [
 * Text reports are combined into an Underwriting Dossier alongside SHAP (Shapley Additive
   exPlanations) attribution values, providing human credit officers and investment analysts
   with full interpretability behind every automated recommendation.
+================================================================================
+END OF BASIC LOGIC SPECIFICATION
+================================================================================
 
-> END OF SPECIFICATION
+
+
+================================================================================
+6. SYSTEM COMPONENT BOUNDARIES, TERMINAL CLASSES & API CONTRACTS
+================================================================================
+This section establishes the strict terminal contracts, public class interfaces,
+and Data Transfer Objects (DTOs) mapped directly to the codebase structure in
+`src/fintech_app/`. It isolates architectural layers so that Frontend, Data Ingestion,
+Risk Modeling, and API engineers can work concurrently against deterministic signatures.
+
+All monetary amounts are represented as Python `decimal.Decimal` to prevent floating
+point inaccuracies. Identifiers use standard `uuid.UUID`. All numerical indices output
+by the analytical layer are bounded floats [0.0, 100.0] or None (null in JSON) when
+evaluating with missing underlying records.
+
+---
+
+## 6.1 SHARED DOMAIN ENUMS & VALUE OBJECTS (src/fintech_app/shared/schemas/user_types.py)
+
+Enums representing fixed domain states across all application boundaries (Python 3.12 `StrEnum`):
+
+* Enum: EvaluationStatus
+* SUCCESS: Submodule calculation completed normally.
+* DATA_ABSENT: Required records missing; indices safely defaulted to null.
+* ERROR: Operational or parsing failure during evaluation.
+
+* Enum: CounterpartyRole
+* CLIENT, SUPPLIER, MIXED
+
+* Enum: InvoiceType
+* RECEIVABLE, PAYABLE
+
+* Enum: InvoiceStatus
+* PAID, OUTSTANDING, OVERDUE, DEFAULTED
+
+* Enum: TransactionDirection
+* INFLOW, OUTFLOW
+
+* Enum: TransactionCategory
+* REVENUE, OPERATING_EXPENSE, PAYROLL, TAX, DEBT_SERVICE, DIVIDEND, OTHER
+
+* Enum: LiquidityClass
+* IMMEDIATE_CASH, RESTRICTED_ESCROW, TERM_DEPOSIT
+
+* Enum: FacilityType
+* TERM_LOAN, LEASING, LINE_OF_CREDIT
+
+* Enum: AnalysisStatus
+* QUEUED, PARSING, PROCESSING, COMPLETED, FAILED, DEGRADED
+
+
+---
+
+## 6.2 INGESTION & NORMALIZATION BOUNDARY (src/fintech_app/ingestion/)
+
+This layer accepts unstructured or semi-structured bank statements, judicial extracts,
+and registries, returning strictly typed normalized DTOs ready for DB insertion.
+
+## FILE: src/fintech_app/ingestion/schemas.py
+
+Terminal Pydantic DTOs for parsed external feeds:
+
+* Class: RawBankStatementLine
+* date: datetime.date
+* amount: Decimal
+* direction: TransactionDirection
+* description: str
+* counterparty_raw_name: Optional[str]
+* counterparty_tax_id: Optional[str]
+* account_number: str
+* currency: str
+
+
+* Class: ParsedBankStatementPayload
+* account_id: UUID
+* business_id: UUID
+* opening_balance: Decimal
+* closing_balance: Decimal
+* period_start: datetime.date
+* period_end: datetime.date
+* lines: List[RawBankStatementLine]
+
+
+* Class: ParsedJudicialRecord
+* case_number: str
+* filing_date: datetime.date
+* role: str  # DEFENDANT, PLAINTIFF, THIRD_PARTY
+* claim_amount: Decimal
+* case_status: str  # OPEN, CLOSED, APPEALED
+
+
+* Class: StandardizedTransactionBatch
+* business_id: UUID
+* account_id: UUID
+* transactions: List[Dict[str, Any]] # Pre-mapped fields for DB insertion
+
+
+
+## FILE: src/fintech_app/ingestion/parser.py
+
+Terminal parser classes extracting structured records from file bytes:
+
+* Class: BankStatementParser
+Terminal Methods:
+* parse_csv(file_content: bytes, account_id: UUID, business_id: UUID) -> ParsedBankStatementPayload
+* parse_pdf(file_content: bytes, account_id: UUID, business_id: UUID) -> ParsedBankStatementPayload
+
+
+* Class: JudicialRegistryParser
+Terminal Methods:
+* parse_court_registry_response(raw_response: dict) -> List[ParsedJudicialRecord]
+
+
+
+## FILE: src/fintech_app/ingestion/ai_mapper.py
+
+Semantic classification and category assignment for raw bank lines:
+
+* Class: TransactionCategorizationMapper
+Terminal Methods:
+* map_categories_and_counterparties(payload: ParsedBankStatementPayload) -> StandardizedTransactionBatch
+Transforms unstructured transaction descriptions into standard TransactionCategory
+enums and links or creates Counterparty entities.
+
+
+
+---
+
+## 6.3 DATA ACCESS & EVALUATION SNAPSHOT LAYER (src/fintech_app/db/)
+
+The analytical core must never execute ad-hoc SQL queries inside mathematical submodules.
+All data persistence and access executes asynchronously via `psycopg_pool.AsyncConnectionPool`
+and the `Database` class (`db/connection.py`), returning standardized `DatabaseReport` objects.
+
+## FILE: src/fintech_app/db/models.py
+
+Pure Python Dataclasses mapping strictly to Section 2 Database Tables:
+
+* BusinessRecord
+* ShareholderRecord
+* WebReputationRecord
+* MacroSectorMetricRecord
+* CounterpartyRecord
+* InvoiceRecord
+* BankAccountRecord
+* TransactionRecord
+* CreditObligationRecord
+* UserRecord
+* UserSettingsRecord
+* AnalysisRunRecord
+* AnalysisLogRecord
+
+## FILE: src/fintech_app/db/connection.py & Repository Interface
+
+* Class: CompanyDataSnapshot (Pure In-Memory Evaluation Context)
+Attributes:
+* business_id: UUID
+* as_of_date: datetime.date
+* business: BusinessRecord
+* shareholders: List[ShareholderRecord]
+* web_reputation: Optional[WebReputationRecord]
+* macro_metrics: Optional[MacroSectorMetricRecord]
+* counterparties: List[CounterpartyRecord]
+* invoices: List[InvoiceRecord]
+* bank_accounts: List[BankAccountRecord]
+* transactions: List[TransactionRecord]
+* credit_obligations: List[CreditObligationRecord]
+
+
+* Class: CompanyEvaluationRepository
+Terminal Methods:
+* async get_evaluation_snapshot(business_id: UUID, as_of_date: datetime.date) -> CompanyDataSnapshot
+Queries all connected relational clusters via `Database` methods and constructs
+the immutable snapshot.
+* async persist_underwriting_result(run_id: UUID, dossier: Dict[str, Any]) -> DatabaseReport
+
+
+
+---
+
+## 6.4 CORE ANALYTICAL SUBMODULE CONTRACTS (src/fintech_app/ml/)
+
+All 9 submodules reside directly inside `src/fintech_app/ml/` as flat files and adhere to a single
+unified execution protocol: receiving `CompanyDataSnapshot` and producing `SubmoduleResult`.
+
+Terminal DTO: SubmoduleResult
+
+* submodule_code: str  # e.g., 'OS', 'WPR', 'MSR', 'CD', 'SD', 'ICR', 'CFS', 'RQ', 'ICDL'
+* status: EvaluationStatus
+* impact_weight: float
+* verdict: str
+* indices: Dict[str, Optional[float]]  # Standardized 0.0 to 100.0 values
+* summary: str
+* diagnostic_report: str
+
+Flat Submodule Evaluator Files & Classes:
+
+* FILE: `src/fintech_app/ml/submodule_ownership.py`
+  Class: `OwnershipStructureEvaluator` (Submodule 4.1: OS)
+  Indices: `Ownership_Dispersion_Index`, `Governance_Independence_Index`
+
+* FILE: `src/fintech_app/ml/submodule_reputation.py`
+  Class: `WebReputationEvaluator` (Submodule 4.2: WPR)
+  Indices: `Legal_Cleanliness_Index`, `Public_Reputation_Index`
+
+* FILE: `src/fintech_app/ml/submodule_macro.py`
+  Class: `MacroSectorRiskEvaluator` (Submodule 4.3: MSR)
+  Indices: `Sector_Vitality_Index`
+
+* FILE: `src/fintech_app/ml/submodule_client_dep.py`
+  Class: `ClientDependencyEvaluator` (Submodule 4.4: CD)
+  Indices: `Client_Diversification_Index`, `Top_Client_Exposure_Index`
+
+* FILE: `src/fintech_app/ml/submodule_supplier_dep.py`
+  Class: `SupplierDependencyEvaluator` (Submodule 4.5: SD)
+  Indices: `Supplier_Diversification_Index`, `Supply_Chain_Robustness_Index`
+
+* FILE: `src/fintech_app/ml/submodule_cash_readiness.py`
+  Class: `ImmediateCashReadinessEvaluator` (Submodule 4.6: ICR)
+  Indices: `Cash_Readiness_Index`, `Runway_Buffer_Index`
+
+* FILE: `src/fintech_app/ml/submodule_cash_stability.py`
+  Class: `CashflowStabilityEvaluator` (Submodule 4.7: CFS)
+  Indices: `Revenue_Predictability_Index`, `Revenue_Trajectory_Index`
+
+* FILE: `src/fintech_app/ml/submodule_receivables.py`
+  Class: `ReceivablesQualityEvaluator` (Submodule 4.8: RQ)
+  Indices: `Receivables_Safety_Index`, `Client_Payment_Discipline_Index`
+
+* FILE: `src/fintech_app/ml/submodule_credit_discipline.py`
+  Class: `CreditDisciplineLeverageEvaluator` (Submodule 4.9: ICDL)
+  Indices: `Debt_Repayment_Discipline_Index`, `Debt_Service_Coverage_Index`, `Solvency_Leverage_Index`
+
+
+
+---
+
+## 6.5 PIPELINE & PREDICTIVE SCORING CONTRACTS (src/fintech_app/ml/)
+
+## FILE: src/fintech_app/ml/pipeline.py
+
+Orchestrates concurrent execution of all 9 submodules and compiles the 18-element feature vector.
+
+* Class: UnderwritingPipelineResult
+* business_id: UUID
+* as_of_date: datetime.date
+* feature_vector: List[Optional[float]]  # Exactly 18 items in canonical order specified in Section 5.2
+* submodule_results: Dict[str, SubmoduleResult]
+* compiled_dossier_text: str
+
+
+* Class: UnderwritingAnalyticalPipeline
+Terminal Methods:
+* run_analysis(snapshot: CompanyDataSnapshot, as_of_date: Optional[date] = None) -> UnderwritingPipelineResult
+
+
+
+## FILE: src/fintech_app/ml/scoring.py
+
+Executes decision scoring and LLM synthesis on the feature vector.
+
+* Class: CreditScoringResult
+* investment_attractiveness_score: float  # [0.0 to 100.0]
+* probability_of_default: float  # [0.000 to 1.000]
+* verdict_category: str  # PRIME_LOW_RISK, MODERATE_MONITORED, HIGH_RISK_REJECT
+* recommendation: str  # APPROVED, MANUAL_REVIEW, REJECTED
+* shap_attributions: Dict[str, float]  # Metric name -> impact on score
+* executive_summary: str
+
+
+* Class: CreditScoringEngine
+Terminal Methods:
+* calculate_score(feature_vector: List[Optional[float]], compiled_dossier_text: str = "") -> CreditScoringResult
+
+
+
+---
+
+## 6.6 API PRESENTATION CONTRACTS (src/fintech_app/api/ & shared/schemas/)
+
+These request and response DTOs govern the FastAPI routing layer.
+
+## FILE: src/fintech_app/api/endpoints/analysis.py (or router.py)
+
+Endpoints:
+
+* POST /api/v1/analysis/start
+Accepts multipart form with enterprise metadata and package of CSV files, creates `analysis_runs` record in DB, and initializes background pipeline.
+Request:
+* input_company_name: str (form field)
+* input_tax_id: str (form field)
+* input_industry_code: str (form field)
+* files: List[UploadFile] (multipart/form-data)
+
+Response DTO: AnalysisStartResponse
+* run_id: UUID
+* status: AnalysisStatus  # QUEUED
+* message: str
+
+
+* GET /api/v1/analysis/stream/{run_id}
+Streams live execution telemetry logs and stage transition events in real time via Server-Sent Events (SSE).
+Media Type: `text/event-stream`
+
+
+* GET /api/v1/analysis/report/{run_id}
+Returns complete Underwriting Diagnostic Dossier including universal score, 18 indices, 9 submodule reports, and LLM summary.
+Response DTO: AnalysisReportResponse
+* run_id: UUID
+* company_name: str
+* tax_id: str
+* execution_status: AnalysisStatus
+* universal_score: float
+* verdict_category: str
+* feature_vector: Dict[str, Optional[float]]
+* llm_synthesis: Dict[str, Any]
+* submodules: List[Dict[str, Any]]
+================================================================================
+END OF SYSTEM SPECIFICATION
+================================================================================
