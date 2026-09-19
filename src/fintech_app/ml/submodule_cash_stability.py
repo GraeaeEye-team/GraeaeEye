@@ -4,7 +4,6 @@ Evaluates revenue volatility over 12 monthly rolling buckets and inflow trend tr
 Calculates Coefficient of Variation (CV) and OLS trend slope.
 """
 from datetime import date, datetime
-from decimal import Decimal
 import math
 from typing import Any
 
@@ -13,7 +12,6 @@ try:
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from src.fintech_app.shared.schemas.user_types import EvaluationStatus
 except ModuleNotFoundError:
@@ -21,7 +19,6 @@ except ModuleNotFoundError:
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from fintech_app.shared.schemas.user_types import EvaluationStatus
 
@@ -42,7 +39,7 @@ class CashflowStabilityEvaluator(BaseSubmoduleEvaluator):
         revenue_txs = [
             tx for tx in transactions
             if str(getattr(tx, "direction", "")).upper() == "INFLOW"
-            and str(getattr(tx, "category", "")).upper() == "REVENUE"
+            and str(getattr(tx, "category", "")).upper() in ("CLIENT_REVENUE", "REVENUE")
         ]
 
         if not revenue_txs:
@@ -83,7 +80,8 @@ class CashflowStabilityEvaluator(BaseSubmoduleEvaluator):
 
         # Check if transactions carry date/timestamp metadata
         has_dates = any(
-            getattr(tx, "timestamp", None) is not None or getattr(tx, "transaction_date", None) is not None
+            getattr(tx, "timestamp", None) is not None
+            or getattr(tx, "transaction_date", None) is not None
             for tx in revenue_txs
         )
 
@@ -97,7 +95,7 @@ class CashflowStabilityEvaluator(BaseSubmoduleEvaluator):
                         dt = dt.date()
                     key = (dt.year, dt.month)
                     if key in monthly_buckets:
-                        monthly_buckets[key] += float(getattr(tx, "amount", 0.0))
+                        monthly_buckets[key] += abs(float(getattr(tx, "amount", 0.0)))
                         has_matching_inflows = True
 
             if not has_matching_inflows:
@@ -121,7 +119,7 @@ class CashflowStabilityEvaluator(BaseSubmoduleEvaluator):
             r_values = [monthly_buckets[k] for k in month_keys]
         else:
             # Dateless transaction list (e.g. synthetic test fixtures)
-            inflows = [float(getattr(tx, "amount", 0.0)) for tx in revenue_txs]
+            inflows = [abs(float(getattr(tx, "amount", 0.0))) for tx in revenue_txs]
             if len(inflows) == 12:
                 r_values = inflows
             elif len(inflows) < 12:
@@ -168,7 +166,8 @@ class CashflowStabilityEvaluator(BaseSubmoduleEvaluator):
             f"NUMERICAL INDICES:\n"
             f"- Revenue Predictability Index: {predictability_idx:.1f} / 100.0\n"
             f"- Revenue Trajectory Index: {trajectory_idx:.1f} / 100.0\n"
-            f"SUMMARY: Mean monthly revenue: {mean_r:,.2f} MDL. Coefficient of Variation: {cv:.2f}. "
+            f"SUMMARY: Mean monthly revenue: {mean_r:,.2f} MDL. "
+            f"Coefficient of Variation: {cv:.2f}. "
             f"Revenue growth trajectory slope is {slope:.2f} per month."
         )
 

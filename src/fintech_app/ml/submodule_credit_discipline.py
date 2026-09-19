@@ -4,7 +4,6 @@ Evaluates past delinquencies penalties (30d/90d DPD, defaults), Debt Service Cov
 and Debt-to-Cash Flow Leverage (DCFL).
 """
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 from typing import Any
 
 try:
@@ -12,7 +11,6 @@ try:
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from src.fintech_app.shared.schemas.user_types import EvaluationStatus
 except ModuleNotFoundError:
@@ -20,7 +18,6 @@ except ModuleNotFoundError:
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from fintech_app.shared.schemas.user_types import EvaluationStatus
 
@@ -88,17 +85,23 @@ class CreditDisciplineLeverageEvaluator(BaseSubmoduleEvaluator):
 
             direction = str(getattr(tx, "direction", "")).upper()
             category = str(getattr(tx, "category", "")).upper()
-            amt = float(getattr(tx, "amount", 0.0))
+            amt = abs(float(getattr(tx, "amount", 0.0)))
 
             if direction == "INFLOW":
                 annual_inflows += amt
-            elif direction == "OUTFLOW" and category != "DEBT_SERVICE":
+            elif direction == "OUTFLOW" and category not in (
+                "CREDIT_REPAYMENT",
+                "INTEREST_FEE",
+                "DEBT_SERVICE",
+            ):
                 annual_opex += amt
 
         operating_cash_flow = max(0.0, annual_inflows - annual_opex)
 
         # 3. Debt Service Coverage Ratio (DSCR)
-        annual_debt_service = sum(float(getattr(ob, "monthly_payment", 0.0)) * 12.0 for ob in obligations)
+        annual_debt_service = sum(
+            float(getattr(ob, "monthly_payment", 0.0)) * 12.0 for ob in obligations
+        )
         dscr = operating_cash_flow / max(annual_debt_service, 1.0)
         dscr_idx = clamp((dscr / 2.0) * 100.0)  # DSCR >= 2.0 gives 100.0
 
@@ -124,7 +127,8 @@ class CreditDisciplineLeverageEvaluator(BaseSubmoduleEvaluator):
             f"- Debt Service Coverage Index: {dscr_idx:.1f} / 100.0\n"
             f"- Solvency Leverage Index: {solvency_leverage_idx:.1f} / 100.0\n"
             f"SUMMARY: Historical defaults: {defaults_count}, 90-day DPD: {past_due_90d}, "
-            f"30-day DPD: {past_due_30d}. Calculated DSCR is {dscr:.2f}, with Total Debt / OCF at {dcfl:.1f}x."
+            f"30-day DPD: {past_due_30d}. Calculated DSCR is {dscr:.2f}, "
+            f"with Total Debt / OCF at {dcfl:.1f}x."
         )
 
         return SubmoduleResult(
@@ -137,7 +141,10 @@ class CreditDisciplineLeverageEvaluator(BaseSubmoduleEvaluator):
                 "Debt_Service_Coverage_Index": dscr_idx,
                 "Solvency_Leverage_Index": solvency_leverage_idx,
             },
-            summary=f"Repayment Discipline: {repayment_discipline_idx:.1f}, DSCR: {dscr:.2f}, DCFL: {dcfl:.1f}x.",
+            summary=(
+                f"Repayment Discipline: {repayment_discipline_idx:.1f}, "
+                f"DSCR: {dscr:.2f}, DCFL: {dcfl:.1f}x."
+            ),
             diagnostic_report=report,
         )
 

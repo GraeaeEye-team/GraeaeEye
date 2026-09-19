@@ -12,7 +12,6 @@ try:
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from src.fintech_app.shared.schemas.user_types import EvaluationStatus
 except ModuleNotFoundError:
@@ -20,13 +19,15 @@ except ModuleNotFoundError:
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from fintech_app.shared.schemas.user_types import EvaluationStatus
 
 
 class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
-    """Evaluates supplier concentration, procurement single-source vulnerability, and supply chain robustness."""
+    """
+    Evaluates supplier concentration, procurement single-source vulnerability,
+    and supply chain robustness.
+    """
 
     submodule_code: str = "SD"
     impact_weight: float = 0.08
@@ -56,8 +57,11 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
         for inv in invoices:
             inv_type = str(getattr(inv, "invoice_type", "")).upper()
             status = str(getattr(inv, "status", "")).upper()
-            if inv_type == "PAYABLE" and status == "PAID":
-                doc_date = getattr(inv, "actual_payment_date", None) or getattr(inv, "issue_date", None)
+            if inv_type == "PAYABLE" and status in ("SETTLED", "PAID"):
+                doc_date = (
+                    getattr(inv, "actual_payment_date", None)
+                    or getattr(inv, "issue_date", None)
+                )
                 if isinstance(doc_date, datetime):
                     doc_date = doc_date.date()
                 if doc_date is not None and (doc_date < start_date or doc_date > as_of_date):
@@ -72,7 +76,11 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
         for tx in transactions:
             direction = str(getattr(tx, "direction", "")).upper()
             category = str(getattr(tx, "category", "")).upper()
-            if direction == "OUTFLOW" and category == "OPERATING_EXPENSE":
+            if direction == "OUTFLOW" and category in (
+                "SUPPLIER_PAYMENT",
+                "OPERATING_EXPENSE",
+                "OTHER",
+            ):
                 tx_date = getattr(tx, "timestamp", None) or getattr(tx, "transaction_date", None)
                 if isinstance(tx_date, datetime):
                     tx_date = tx_date.date()
@@ -91,7 +99,7 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
             vid = str(getattr(inv, "counterparty_id", "unknown"))
             raw_amt = getattr(inv, "gross_amount", Decimal("0.00"))
             amt = raw_amt if isinstance(raw_amt, Decimal) else Decimal(str(raw_amt))
-            vendor_spend[vid] = vendor_spend.get(vid, Decimal("0.00")) + amt
+            vendor_spend[vid] = vendor_spend.get(vid, Decimal("0.00")) + abs(amt)
 
         for tx in opex_transactions:
             raw_cid = getattr(tx, "counterparty_id", None)
@@ -100,7 +108,7 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
             vid = str(raw_cid)
             raw_amt = getattr(tx, "amount", Decimal("0.00"))
             amt = raw_amt if isinstance(raw_amt, Decimal) else Decimal(str(raw_amt))
-            vendor_spend[vid] = vendor_spend.get(vid, Decimal("0.00")) + amt
+            vendor_spend[vid] = vendor_spend.get(vid, Decimal("0.00")) + abs(amt)
 
         total_spend_dec = sum(vendor_spend.values(), Decimal("0.00"))
 
@@ -146,7 +154,9 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
 
         # Build counterparty names lookup for diagnostic report
         cp_names = {
-            str(getattr(cp, "counterparty_id", "")): getattr(cp, "legal_name", str(getattr(cp, "counterparty_id", "")))
+            str(getattr(cp, "counterparty_id", "")): getattr(
+                cp, "legal_name", str(getattr(cp, "counterparty_id", ""))
+            )
             for cp in counterparties
         }
         top_vendor_id = sorted_vendors[0][0] if sorted_vendors else "N/A"
@@ -160,8 +170,9 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
             f"NUMERICAL INDICES:\n"
             f"- Supplier Diversification Index: {diversification_idx:.1f} / 100.0\n"
             f"- Supply Chain Robustness Index: {robustness_idx:.1f} / 100.0\n"
-            f"SUMMARY: Vendor HHI is {vendor_hhi:.1f}. Largest supplier{vendor_label_info} consumes "
-            f"{primary_vendor_share:.1f}% of total procurement expenditures across {len(vendor_spend)} active operational suppliers."
+            f"SUMMARY: Vendor HHI is {vendor_hhi:.1f}. "
+            f"Largest supplier{vendor_label_info} consumes {primary_vendor_share:.1f}% "
+            f"of total procurement across {len(vendor_spend)} active suppliers."
         )
 
         return SubmoduleResult(
@@ -173,7 +184,10 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
                 "Supplier_Diversification_Index": diversification_idx,
                 "Supply_Chain_Robustness_Index": robustness_idx,
             },
-            summary=f"Vendor HHI: {vendor_hhi:.1f}, Top Supplier Share: {primary_vendor_share:.1f}%.",
+            summary=(
+                f"Vendor HHI: {vendor_hhi:.1f}, "
+                f"Top Supplier Share: {primary_vendor_share:.1f}%."
+            ),
             diagnostic_report=report,
         )
 

@@ -8,7 +8,6 @@ and generates structured synthesis prompts for LLM underwriting memoranda.
 """
 from dataclasses import dataclass, field
 import math
-from typing import Any
 
 try:
     from src.fintech_app.ml.base import clamp
@@ -23,12 +22,13 @@ class CreditScoringResult:
 
     Attributes:
         investment_attractiveness_score: Overall credit score bounded in [0.0, 100.0].
-        probability_of_default: Estimated probability of default bounded in [0.001, 0.999].
-        verdict_category: High-level risk category ('PRIME_LOW_RISK', 'MODERATE_MONITORED', 'HIGH_RISK_REJECT').
-        recommendation: Credit committee action recommendation ('APPROVED', 'MANUAL_REVIEW', 'REJECTED').
-        shap_attributions: Factor contribution breakdown (pseudo-SHAP) relative to neutral baseline (50.0).
+        probability_of_default: Estimated probability of default in [0.001, 0.999].
+        verdict_category: High-level risk category ('PRIME_LOW_RISK',
+            'MODERATE_MONITORED', 'HIGH_RISK_REJECT').
+        recommendation: Action recommendation ('APPROVED', 'MANUAL_REVIEW', 'REJECTED').
+        shap_attributions: Factor contribution breakdown (pseudo-SHAP) relative to 50.0.
         executive_summary: High-level executive synthesis of underwriting metrics.
-        llm_synthesis_prompt: Structured synthesis prompt for LLM underwriting memo generation.
+        llm_synthesis_prompt: Synthesis prompt for LLM underwriting memo generation.
     """
 
     investment_attractiveness_score: float  # [0.0, 100.0]
@@ -38,6 +38,11 @@ class CreditScoringResult:
     shap_attributions: dict[str, float] = field(default_factory=dict)
     executive_summary: str = ""
     llm_synthesis_prompt: str = ""
+
+    @property
+    def universal_score(self) -> float:
+        """Alias for investment_attractiveness_score for domain parity."""
+        return self.investment_attractiveness_score
 
 
 class CreditScoringEngine:
@@ -108,7 +113,8 @@ class CreditScoringEngine:
     ) -> CreditScoringResult:
         """
         Calculates credit score, probability of default, risk categories,
-        pseudo-SHAP attributions, and LLM synthesis prompt from the canonical 18-element feature vector.
+        pseudo-SHAP attributions, and LLM synthesis prompt from the canonical
+        18-element feature vector.
 
         :param feature_vector: Standardized 18-element feature vector [0..100.0 or None].
         :param compiled_dossier_text: Concatenated diagnostic text reports from all submodules.
@@ -202,8 +208,9 @@ class CreditScoringEngine:
         # Step 6: Executive summary narrative
         active_count = len(active_submodules)
         executive_summary = (
-            f"Enterprise evaluated with an overall Investment Attractiveness Score of {score:.1f}/100.0 "
-            f"({verdict_category}). Underwriting Recommendation: {recommendation}. "
+            f"Enterprise evaluated with an overall Investment Attractiveness "
+            f"Score of {score:.1f}/100.0 ({verdict_category}). "
+            f"Underwriting Recommendation: {recommendation}. "
             f"Estimated Probability of Default (PD): {pd_val * 100:.2f}%. "
             f"Active submodules: {active_count}/9."
         )
@@ -222,8 +229,8 @@ class CreditScoringEngine:
                 )
             else:
                 attribution_lines.append(
-                    f"  - [{code}] Base Weight: {base_w:.2f} | Status: INACTIVE (DATA_ABSENT/ERROR) | "
-                    f"SHAP Impact: 0.00 pts"
+                    f"  - [{code}] Base Weight: {base_w:.2f} | "
+                    f"Status: INACTIVE (DATA_ABSENT/ERROR) | SHAP Impact: 0.00 pts"
                 )
         formatted_attributions = "\n".join(attribution_lines)
 
@@ -233,8 +240,10 @@ class CreditScoringEngine:
             else "[No submodule diagnostic reports provided]"
         )
 
-        llm_synthesis_prompt = f"""You are a Senior Credit Risk Underwriting Officer at a commercial SME fintech lender.
-Your task is to synthesize the quantitative underwriting evaluation, feature scores, and submodule diagnostic reports into a comprehensive, professional Credit Underwriting Dossier.
+        llm_synthesis_prompt = f"""You are a Senior Credit Risk Underwriting Officer at a \
+commercial SME fintech lender.
+Your task is to synthesize the quantitative underwriting evaluation, feature scores, \
+and submodule diagnostic reports into a comprehensive, professional Credit Underwriting Dossier.
 
 ### 1. EXECUTIVE UNDERWRITING METRICS:
 - Investment Attractiveness Score: {score:.1f} / 100.0
@@ -251,14 +260,16 @@ Your task is to synthesize the quantitative underwriting evaluation, feature sco
 
 ### 4. INSTRUCTIONS FOR DOSSIER SYNTHESIS:
 Produce a structured Credit Committee Underwriting Memorandum with the following sections:
-1. Executive Summary & Core Verdict: Concise review of the enterprise, core strengths, and credit decision.
+1. Executive Summary & Core Verdict: Concise review of the enterprise, core strengths, \
+and credit decision.
 2. Pillar-by-Pillar Risk Breakdown:
    - Corporate Governance & Ownership Stability (OS, WPR)
    - Macroeconomic & Sector Resilience (MSR)
    - Commercial Counterparty Concentration & Supply Chain Robustness (CD, SD)
    - Liquidity, Runway & Cashflow Predictability (ICR, CFS)
    - Credit Repayment Discipline, Receivables Aging & Leverage (RQ, ICDL)
-3. Key Risk Factors & Early Warnings: Identify specific vulnerabilities, adverse trends, or data gaps.
+3. Key Risk Factors & Early Warnings: Identify specific vulnerabilities, adverse trends, \
+or data gaps.
 4. Mitigating Factors & Compensating Controls: Justify strengths that counterbalance weaknesses.
 5. Underwriting Decision, Covenants & Monitoring Terms:
    - Final Loan Decision ({recommendation})
@@ -266,7 +277,8 @@ Produce a structured Credit Committee Underwriting Memorandum with the following
    - Collateral or personal guarantee requirements if applicable
    - Early warning triggers and monitoring cadence.
 
-Maintain an institutional, evidence-based, and rigorous tone appropriate for an investment credit committee."""
+Maintain an institutional, evidence-based, and rigorous tone appropriate for an \
+investment credit committee."""
 
         return CreditScoringResult(
             investment_attractiveness_score=score,

@@ -18,6 +18,7 @@ class CounterpartyRole(StrEnum):
     CLIENT = "CLIENT"          # Покупатель/дебитор
     SUPPLIER = "SUPPLIER"      # Поставщик/кредитор
     MIXED = "MIXED"            # Одновременно и покупатель, и поставщик
+    BOTH = "BOTH"              # Двойная роль в схеме БД
 
 
 class InvoiceType(StrEnum):
@@ -28,10 +29,12 @@ class InvoiceType(StrEnum):
 
 class InvoiceStatus(StrEnum):
     """Жизненный цикл оплаты счета."""
-    PAID = "PAID"              # Полностью оплачен
+    PAID = "PAID"              # Полностью оплачен (алиас)
+    SETTLED = "SETTLED"        # Канонический статус в схеме БД
     OUTSTANDING = "OUTSTANDING"# Выставлен, срок оплаты еще не наступил
     OVERDUE = "OVERDUE"        # Просрочен по договору
     DEFAULTED = "DEFAULTED"    # Безнадежный долг / списание
+    DISPUTED = "DISPUTED"      # Оспариваемый счет в суде / арбитраже
 
 
 class TransactionDirection(StrEnum):
@@ -43,10 +46,14 @@ class TransactionDirection(StrEnum):
 class TransactionCategory(StrEnum):
     """Категория транзакции для анализа операционных расходов и денежного потока."""
     REVENUE = "REVENUE"
+    CLIENT_REVENUE = "CLIENT_REVENUE"
     OPERATING_EXPENSE = "OPERATING_EXPENSE"
+    SUPPLIER_PAYMENT = "SUPPLIER_PAYMENT"
     PAYROLL = "PAYROLL"
     TAX = "TAX"
     DEBT_SERVICE = "DEBT_SERVICE"
+    CREDIT_REPAYMENT = "CREDIT_REPAYMENT"
+    INTEREST_FEE = "INTEREST_FEE"
     DIVIDEND = "DIVIDEND"
     OTHER = "OTHER"
 
@@ -56,13 +63,21 @@ class LiquidityClass(StrEnum):
     IMMEDIATE_CASH = "IMMEDIATE_CASH"          # Доступно прямо сейчас
     RESTRICTED_ESCROW = "RESTRICTED_ESCROW"    # Заблокировано на эскроу
     TERM_DEPOSIT = "TERM_DEPOSIT"              # Срочный депозит (нельзя снять мгновенно)
+    SHORT_TERM_RECEIVABLE = "SHORT_TERM_RECEIVABLE"
+    TIED_CAPITAL = "TIED_CAPITAL"
 
 
 class FacilityType(StrEnum):
     """Тип долгового обязательства."""
     TERM_LOAN = "TERM_LOAN"                    # Классический кредит
-    LEASING = "LEASING"                        # Финансовый лизинг оборудования/авто
+    CREDIT_LINE = "CREDIT_LINE"                # Кредитная линия в БД
     LINE_OF_CREDIT = "LINE_OF_CREDIT"          # Возобновляемая кредитная линия
+    OVERDRAFT = "OVERDRAFT"                    # Овердрафт
+    LEASING = "LEASING"                        # Финансовый лизинг оборудования/авто
+    FACTORING = "FACTORING"                    # Факторинг
+
+
+CreditFacilityType = FacilityType
 
 
 class UserRole(StrEnum):
@@ -369,6 +384,8 @@ class AnalysisRunRecord:
     submodules_reports: Optional[List[Dict[str, Any]]] = None
     llm_final_summary: Optional[str] = None
     universal_score: Optional[Decimal] = None
+    verdict_category: Optional[str] = None
+    recommendation: Optional[str] = None
     failure_reason: Optional[str] = None
     created_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
@@ -389,4 +406,42 @@ class AnalysisLogRecord:
     stage: str
     message: str
     timestamp: Optional[datetime] = None
+
+
+# =====================================================================
+# 7. КОНСОЛИДИРОВАННЫЙ СЛЕПОК ДАННЫХ ДЛЯ АНАЛИТИЧЕСКОГО ЯДРА (ML)
+# =====================================================================
+
+@dataclass
+class CompanyDataSnapshot:
+    """
+    Консолидированный снимок данных предприятия для аналитического ядра ML.
+    Объединяет все 9 реляционных срезов и метаданные на дату анализа.
+    """
+    business: BusinessRecord
+    shareholders: List[ShareholderRecord] = field(default_factory=list)
+    web_reputation: Optional[WebReputationRecord] = None
+    macro_sector_metrics: Optional[MacroSectorMetricRecord] = None
+    counterparties: List[CounterpartyRecord] = field(default_factory=list)
+    invoices: List[InvoiceRecord] = field(default_factory=list)
+    bank_accounts: List[BankAccountRecord] = field(default_factory=list)
+    transactions: List[TransactionRecord] = field(default_factory=list)
+    credit_obligations: List[CreditObligationRecord] = field(default_factory=list)
+    as_of_date: Optional[date] = None
+    business_id: Optional[UUID] = None
+
+    def __post_init__(self) -> None:
+        if self.business_id is None and self.business is not None:
+            self.business_id = getattr(self.business, "business_id", None)
+        if self.as_of_date is None:
+            self.as_of_date = date.today()
+
+    @property
+    def macro_metrics(self) -> Optional[MacroSectorMetricRecord]:
+        """Алиас для обратной совместимости с субмодулем макро-риска."""
+        return self.macro_sector_metrics
+
+    @macro_metrics.setter
+    def macro_metrics(self, value: Optional[MacroSectorMetricRecord]) -> None:
+        self.macro_sector_metrics = value
 

@@ -12,7 +12,6 @@ try:
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from src.fintech_app.shared.schemas.user_types import EvaluationStatus
 except ModuleNotFoundError:
@@ -20,13 +19,15 @@ except ModuleNotFoundError:
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from fintech_app.shared.schemas.user_types import EvaluationStatus
 
 
 class ClientDependencyEvaluator(BaseSubmoduleEvaluator):
-    """Evaluates customer concentration, buyer dependency, and revenue single-point-of-failure risk."""
+    """
+    Evaluates customer concentration, buyer dependency,
+    and revenue single-point-of-failure risk.
+    """
 
     submodule_code: str = "CD"
     impact_weight: float = 0.10
@@ -54,9 +55,12 @@ class ClientDependencyEvaluator(BaseSubmoduleEvaluator):
         for inv in invoices:
             inv_type = str(getattr(inv, "invoice_type", "")).upper()
             status = str(getattr(inv, "status", "")).upper()
-            if inv_type == "RECEIVABLE" and status == "PAID":
+            if inv_type == "RECEIVABLE" and status in ("SETTLED", "PAID"):
                 # Check period if date attribute exists
-                doc_date = getattr(inv, "actual_payment_date", None) or getattr(inv, "issue_date", None)
+                doc_date = (
+                    getattr(inv, "actual_payment_date", None)
+                    or getattr(inv, "issue_date", None)
+                )
                 if isinstance(doc_date, datetime):
                     doc_date = doc_date.date()
                 if doc_date is not None and (doc_date < start_date or doc_date > as_of_date):
@@ -134,7 +138,9 @@ class ClientDependencyEvaluator(BaseSubmoduleEvaluator):
 
         # Build counterparty names lookup for informative reporting
         cp_names = {
-            str(getattr(cp, "counterparty_id", "")): getattr(cp, "legal_name", str(getattr(cp, "counterparty_id", "")))
+            str(getattr(cp, "counterparty_id", "")): getattr(
+                cp, "legal_name", str(getattr(cp, "counterparty_id", ""))
+            )
             for cp in counterparties
         }
         top_client_id = sorted_clients[0][0] if sorted_clients else "N/A"
@@ -148,8 +154,9 @@ class ClientDependencyEvaluator(BaseSubmoduleEvaluator):
             f"NUMERICAL INDICES:\n"
             f"- Client Diversification Index: {diversification_idx:.1f} / 100.0\n"
             f"- Top Client Exposure Index: {top_exposure_idx:.1f} / 100.0\n"
-            f"SUMMARY: Customer HHI is {customer_hhi:.1f}. Primary client{client_label_info} accounts for {cr1:.1f}%, "
-            f"and top 3 clients represent {cr3:.1f}% of total trailing 12-month commercial revenue."
+            f"SUMMARY: Customer HHI is {customer_hhi:.1f}. "
+            f"Primary client{client_label_info} accounts for {cr1:.1f}%, "
+            f"and top 3 clients represent {cr3:.1f}% of total trailing 12-month revenue."
         )
 
         return SubmoduleResult(

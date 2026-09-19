@@ -1,10 +1,10 @@
 """
 Submodule 4.6: Immediate Cash Readiness Evaluator (ICR).
-Evaluates total liquid cash against immediate 30-day operational obligations (payroll, taxes, due payables).
+Evaluates total liquid cash against immediate 30-day operational obligations
+(payroll, taxes, due payables).
 Calculates Cash Ratio (CR) and Days Cash on Hand (DCOH).
 """
 from datetime import date, datetime, timedelta
-from decimal import Decimal
 from typing import Any
 
 try:
@@ -12,7 +12,6 @@ try:
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from src.fintech_app.shared.schemas.user_types import EvaluationStatus
 except ModuleNotFoundError:
@@ -20,7 +19,6 @@ except ModuleNotFoundError:
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from fintech_app.shared.schemas.user_types import EvaluationStatus
 
@@ -66,7 +64,8 @@ class ImmediateCashReadinessEvaluator(BaseSubmoduleEvaluator):
         active_accounts = mdl_accounts if mdl_accounts else bank_accounts
 
         liquid_cash = sum(
-            float(getattr(acc, "current_balance", 0.0)) + float(getattr(acc, "overdraft_limit", 0.0))
+            float(getattr(acc, "current_balance", 0.0))
+            + float(getattr(acc, "overdraft_limit", 0.0))
             for acc in active_accounts
         )
 
@@ -94,7 +93,7 @@ class ImmediateCashReadinessEvaluator(BaseSubmoduleEvaluator):
                 if tx_date is not None and (tx_date < three_months_ago or tx_date > as_of_date):
                     continue
 
-                amt = float(getattr(tx, "amount", 0.0))
+                amt = abs(float(getattr(tx, "amount", 0.0)))
                 if category == "PAYROLL":
                     payroll_amounts.append(amt)
                 elif category == "TAX":
@@ -103,7 +102,8 @@ class ImmediateCashReadinessEvaluator(BaseSubmoduleEvaluator):
         monthly_payroll = sum(payroll_amounts) / 3.0 if payroll_amounts else 0.0
         monthly_taxes = sum(tax_amounts) / 3.0 if tax_amounts else 0.0
 
-        # 3. Due Payables 30D: PAYABLE invoices with status OUTSTANDING (or OVERDUE) and due_date <= as_of_date + 30 days
+        # 3. Due Payables 30D: PAYABLE invoices with status OUTSTANDING (or OVERDUE)
+        # and due_date <= as_of_date + 30 days
         due_payables_30d = 0.0
         max_due_date = as_of_date + timedelta(days=30)
         for inv in invoices:
@@ -144,7 +144,8 @@ class ImmediateCashReadinessEvaluator(BaseSubmoduleEvaluator):
             f"- Cash Readiness Index: {cash_readiness_idx:.1f} / 100.0\n"
             f"- Runway Buffer Index: {runway_buffer_idx:.1f} / 100.0\n"
             f"SUMMARY: Available liquidity: {liquid_cash:,.2f} MDL. Immediate 30-day obligations: "
-            f"{total_demand:,.2f} MDL. Cash Ratio is {cash_ratio:.2f}. Company maintains {dcoh:.1f} days cash runway."
+            f"{total_demand:,.2f} MDL. Cash Ratio is {cash_ratio:.2f}. "
+            f"Company maintains {dcoh:.1f} days cash runway."
         )
 
         return SubmoduleResult(

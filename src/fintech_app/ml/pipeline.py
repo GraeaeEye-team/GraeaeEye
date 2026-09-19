@@ -2,15 +2,21 @@
 Master Pipeline Orchestrator for the Underwriting Analytical Core.
 Runs all 9 autonomous submodules concurrently against CompanyDataSnapshot,
 builds the standardized 18-element feature vector, and compiles the diagnostic report dossier.
+Provides asynchronous database-backed evaluation via CompanyDataLoader.
 """
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
+from decimal import Decimal
 import logging
-from typing import Any
+import math
+from typing import Any, Optional
 from uuid import UUID
 
 try:
+    from src.fintech_app.db.connection import Database
     from src.fintech_app.ml.base import EvaluationStatus, SubmoduleResult
+    from src.fintech_app.ml.loader import CompanyDataLoader
+    from src.fintech_app.ml.scoring import CreditScoringEngine, CreditScoringResult
     from src.fintech_app.ml.submodule_ownership import OwnershipStructureEvaluator
     from src.fintech_app.ml.submodule_reputation import WebReputationEvaluator
     from src.fintech_app.ml.submodule_macro import MacroSectorRiskEvaluator
@@ -21,7 +27,10 @@ try:
     from src.fintech_app.ml.submodule_receivables import ReceivablesQualityEvaluator
     from src.fintech_app.ml.submodule_credit_discipline import CreditDisciplineLeverageEvaluator
 except ModuleNotFoundError:
+    from fintech_app.db.connection import Database
     from fintech_app.ml.base import EvaluationStatus, SubmoduleResult
+    from fintech_app.ml.loader import CompanyDataLoader
+    from fintech_app.ml.scoring import CreditScoringEngine, CreditScoringResult
     from fintech_app.ml.submodule_ownership import OwnershipStructureEvaluator
     from fintech_app.ml.submodule_reputation import WebReputationEvaluator
     from fintech_app.ml.submodule_macro import MacroSectorRiskEvaluator
@@ -44,6 +53,7 @@ class UnderwritingPipelineResult:
     feature_vector: list[float | None]  # Exactly 18 numerical indices in canonical order
     submodule_results: dict[str, SubmoduleResult]
     compiled_dossier_text: str
+    scoring_result: Optional[CreditScoringResult] = None
 
 
 class UnderwritingAnalyticalPipeline:
@@ -195,7 +205,7 @@ class UnderwritingAnalyticalPipeline:
         ]
 
         assert len(feature_vector) == 18, (
-            f"Expected exactly 18 elements in canonical feature vector, but got {len(feature_vector)}"
+            f"Expected 18 elements in feature vector, got {len(feature_vector)}"
         )
 
         # Compile plain text diagnostic dossier from non-empty diagnostic reports
@@ -214,17 +224,211 @@ class UnderwritingAnalyticalPipeline:
             compiled_dossier_text=compiled_dossier_text,
         )
 
+    async def run_analysis_from_db(
+        self,
+        db: Database,
+        business_id: UUID,
+        as_of_date: Optional[date] = None,
+        run_id: Optional[UUID] = None,
+    ) -> UnderwritingPipelineResult:
+        """
+        Asynchronously loads the complete financial graph for the company from PostgreSQL,
+        compiles the typed CompanyDataSnapshot, executes the 9 analytical submodules,
+        computes investment attractiveness scoring, and updates analysis_runs and logs.
+
+        :param db: Active Database connection instance.
+        :param business_id: UUID of the company to analyze.
+        :param as_of_date: Optional cutoff evaluation date (defaults to date.today()).
+        :param run_id: Optional analysis run UUID for real-time telemetry logging.
+        :return: UnderwritingPipelineResult containing feature vector and scoring result.
+        """
+        effective_date = as_of_date or date.today()
+        is_run_registered = False
+
+        if run_id is not None:
+            # Check if run exists in analysis_runs before emitting logs to prevent FK violation
+            check_rep = await db.get_records_from_analysis_runs(
+                find_only_first=True, run_id=run_id
+            )
+            if check_rep.success and check_rep.data:
+                is_run_registered = True
+                await db.update_records_in_analysis_runs(
+                    updates={"status": "PROCESSING"}, run_id=run_id
+                )
+                await db.add_record_to_analysis_logs(
+                    run_id=run_id,
+                    severity="INFO",
+                    stage="DATA_LOAD",
+                    message="Загрузка финансового графа предприятия из PostgreSQL",
+                )
+
+        try:
+            loader = CompanyDataLoader(db)
+            snapshot = await loader.load_snapshot(
+                business_id=business_id, as_of_date=effective_date
+            )
+
+            if is_run_registered and run_id is not None:
+                await db.add_record_to_analysis_logs(
+                    run_id=run_id,
+                    severity="INFO",
+                    stage="ML_EVALUATION",
+                    message="Запуск 9 аналитических субмодулей",
+                )
+
+            pipeline_result = self.run_analysis(
+                snapshot=snapshot, as_of_date=effective_date
+            )
+
+            if is_run_registered and run_id is not None:
+                await db.add_record_to_analysis_logs(
+                    run_id=run_id,
+                    severity="INFO",
+                    stage="SCORING",
+                    message="Расчет итогового инвестиционного скоринга и вероятности дефолта",
+                )
+
+            # Invoke CreditScoringEngine with exactly two arguments
+            scoring_engine = CreditScoringEngine()
+            scoring_result = scoring_engine.calculate_score(
+                feature_vector=pipeline_result.feature_vector,
+                compiled_dossier_text=pipeline_result.compiled_dossier_text,
+            )
+            pipeline_result.scoring_result = scoring_result
+
+            # Determine status: COMPLETED if all 9 SUCCESS, else DEGRADED if any DATA_ABSENT/ERROR
+            has_incomplete = any(
+                res.status != EvaluationStatus.SUCCESS
+                for res in pipeline_result.submodule_results.values()
+            )
+            final_status = "DEGRADED" if has_incomplete else "COMPLETED"
+
+            if is_run_registered and run_id is not None:
+                # Sanitize raw_indices_payload: strip NaN and convert np.float64 to float or None
+                raw_indices: dict[str, float | None] = {}
+                for idx, feat_name in enumerate(CreditScoringEngine.FEATURE_NAMES):
+                    val = (
+                        pipeline_result.feature_vector[idx]
+                        if idx < len(pipeline_result.feature_vector)
+                        else None
+                    )
+                    if val is not None:
+                        try:
+                            f_val = float(val)
+                            raw_indices[feat_name] = None if math.isnan(f_val) else f_val
+                        except (ValueError, TypeError):
+                            raw_indices[feat_name] = None
+                    else:
+                        raw_indices[feat_name] = None
+
+                # Safely serialize submodules_reports converting EvaluationStatus to str
+                sub_reports = [
+                    {
+                        "submodule_code": res.submodule_code,
+                        "status": (
+                            res.status.value
+                            if hasattr(res.status, "value")
+                            else str(res.status)
+                        ),
+                        "impact_weight": float(res.impact_weight),
+                        "verdict": str(res.verdict),
+                        "indices": {
+                            ik: (
+                                None
+                                if iv is None or math.isnan(float(iv))
+                                else float(iv)
+                            )
+                            for ik, iv in res.indices.items()
+                        },
+                        "summary": str(res.summary),
+                        "diagnostic_report": str(res.diagnostic_report),
+                    }
+                    for res in pipeline_result.submodule_results.values()
+                ]
+
+                # Update analysis_runs with complete dossier and metrics
+                score_dec = Decimal(
+                    str(round(scoring_result.investment_attractiveness_score, 2))
+                )
+                await db.update_records_in_analysis_runs(
+                    updates={
+                        "status": final_status,
+                        "universal_score": score_dec,
+                        "verdict_category": scoring_result.verdict_category,
+                        "recommendation": scoring_result.recommendation,
+                        "llm_final_summary": scoring_result.executive_summary,
+                        "raw_indices_payload": raw_indices,
+                        "submodules_reports": sub_reports,
+                        "completed_at": datetime.now(timezone.utc),
+                    },
+                    run_id=run_id,
+                )
+
+                await db.add_record_to_analysis_logs(
+                    run_id=run_id,
+                    severity="INFO",
+                    stage="PIPELINE_COMPLETE",
+                    message=(
+                        f"Аналитический пайплайн завершен со статусом {final_status}. "
+                        f"Скор: {scoring_result.investment_attractiveness_score:.1f}/100.0 "
+                        f"({scoring_result.verdict_category})"
+                    ),
+                )
+
+            return pipeline_result
+
+        except Exception as exc:
+            logger.error(
+                "Pipeline execution failed for business %s (run_id: %s): %s",
+                business_id,
+                run_id,
+                exc,
+                exc_info=True,
+            )
+            if is_run_registered and run_id is not None:
+                await db.update_records_in_analysis_runs(
+                    updates={
+                        "status": "FAILED",
+                        "failure_reason": str(exc),
+                        "completed_at": datetime.now(timezone.utc),
+                    },
+                    run_id=run_id,
+                )
+                await db.add_record_to_analysis_logs(
+                    run_id=run_id,
+                    severity="ERROR",
+                    stage="ERROR",
+                    message=f"Критическая ошибка выполнения пайплайна: {exc}",
+                )
+            raise exc
+
 
 def run_full_ml_analysis(
     snapshot: Any, as_of_date: date | None = None
 ) -> UnderwritingPipelineResult:
-    """Convenience helper function to execute full pipeline analysis."""
+    """Convenience helper function to execute full pipeline analysis on a snapshot."""
     pipeline = UnderwritingAnalyticalPipeline()
     return pipeline.run_analysis(snapshot, as_of_date=as_of_date)
 
 
+async def run_analysis_from_db(
+    db: Database,
+    business_id: UUID,
+    as_of_date: Optional[date] = None,
+    run_id: Optional[UUID] = None,
+) -> UnderwritingPipelineResult:
+    """Convenience async helper to load data from database and execute full pipeline analysis."""
+    pipeline = UnderwritingAnalyticalPipeline()
+    return await pipeline.run_analysis_from_db(
+        db=db, business_id=business_id, as_of_date=as_of_date, run_id=run_id
+    )
+
+
 __all__ = [
+    "CompanyDataLoader",
     "UnderwritingAnalyticalPipeline",
     "UnderwritingPipelineResult",
+    "run_analysis_from_db",
     "run_full_ml_analysis",
 ]
+

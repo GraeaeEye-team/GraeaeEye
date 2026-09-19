@@ -4,15 +4,13 @@ Evaluates trapped working capital, delinquent receivables exposure (CER),
 customer payment slippage (Mean_Delay_Days), and Days Sales Outstanding (DSO).
 """
 from datetime import date, datetime, timedelta
-from decimal import Decimal
-from typing import Any
+from typing import Any, Optional
 
 try:
     from src.fintech_app.ml.base import (
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from src.fintech_app.shared.schemas.user_types import EvaluationStatus
 except ModuleNotFoundError:
@@ -20,7 +18,6 @@ except ModuleNotFoundError:
         BaseSubmoduleEvaluator,
         SubmoduleResult,
         clamp,
-        safe_div,
     )
     from fintech_app.shared.schemas.user_types import EvaluationStatus
 
@@ -72,11 +69,11 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
         # 1. Total Receivables and Delinquent Receivables
         total_rec = sum(
             float(getattr(inv, "gross_amount", 0.0)) for inv in receivables
-            if str(getattr(inv, "status", "")).upper() != "PAID"
+            if str(getattr(inv, "status", "")).upper() not in ("SETTLED", "PAID")
         )
         delinquent_rec = sum(
             float(getattr(inv, "gross_amount", 0.0)) for inv in receivables
-            if str(getattr(inv, "status", "")).upper() in ("OVERDUE", "DEFAULTED")
+            if str(getattr(inv, "status", "")).upper() in ("OVERDUE", "DEFAULTED", "DISPUTED")
         )
 
         # Counterparty Exposure Ratio (CER)
@@ -86,7 +83,7 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
         delays = []
         for inv in receivables:
             status = str(getattr(inv, "status", "")).upper()
-            if status == "PAID":
+            if status in ("SETTLED", "PAID"):
                 actual_date = getattr(inv, "actual_payment_date", None)
                 due_date = getattr(inv, "due_date", None)
                 if isinstance(actual_date, datetime):
@@ -95,7 +92,9 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
                     due_date = due_date.date()
 
                 # Filter settled invoices within trailing 12 months if date present
-                if actual_date is not None and (actual_date < one_year_ago or actual_date > as_of_date):
+                if actual_date is not None and (
+                    actual_date < one_year_ago or actual_date > as_of_date
+                ):
                     continue
 
                 if actual_date and due_date:
@@ -105,17 +104,23 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
         mean_delay = sum(delays) / len(delays) if delays else 0.0
 
         # 3. Days Sales Outstanding (DSO)
+        def _get_issue_dt(inv: Any) -> Optional[date]:
+            dt = getattr(inv, "issue_date", None)
+            if isinstance(dt, datetime):
+                return dt.date()
+            return dt
+
         credit_sales_invoices = [
             inv for inv in receivables
-            if getattr(inv, "issue_date", None) is None
-            or (
-                (getattr(inv, "issue_date").date() if isinstance(getattr(inv, "issue_date"), datetime) else getattr(inv, "issue_date"))
-                >= one_year_ago
-            )
+            if _get_issue_dt(inv) is None or _get_issue_dt(inv) >= one_year_ago
         ]
-        annual_credit_sales = sum(float(getattr(inv, "gross_amount", 0.0)) for inv in credit_sales_invoices)
+        annual_credit_sales = sum(
+            float(getattr(inv, "gross_amount", 0.0)) for inv in credit_sales_invoices
+        )
         if annual_credit_sales <= 0.0:
-            annual_credit_sales = sum(float(getattr(inv, "gross_amount", 0.0)) for inv in receivables)
+            annual_credit_sales = sum(
+                float(getattr(inv, "gross_amount", 0.0)) for inv in receivables
+            )
 
         dso = (total_rec / max(annual_credit_sales, 1.0)) * 365.0
 
@@ -138,8 +143,9 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
             f"NUMERICAL INDICES:\n"
             f"- Receivables Safety Index: {receivables_safety_idx:.1f} / 100.0\n"
             f"- Client Payment Discipline Index: {discipline_idx:.1f} / 100.0\n"
-            f"SUMMARY: Delinquent receivables represent {cer * 100.0:.1f}% of total book receivables. "
-            f"Average payment delay past contractual due date is {mean_delay:.1f} days. DSO stands at {dso:.1f} days."
+            f"SUMMARY: Delinquent receivables represent {cer * 100.0:.1f}% "
+            f"of total book receivables. Average payment delay past contractual "
+            f"due date is {mean_delay:.1f} days. DSO stands at {dso:.1f} days."
         )
 
         return SubmoduleResult(
@@ -151,7 +157,10 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
                 "Receivables_Safety_Index": receivables_safety_idx,
                 "Client_Payment_Discipline_Index": discipline_idx,
             },
-            summary=f"Delinquency Exposure (CER): {cer * 100.0:.1f}%, Mean Delay: {mean_delay:.1f} days.",
+            summary=(
+                f"Delinquency Exposure (CER): {cer * 100.0:.1f}%, "
+                f"Mean Delay: {mean_delay:.1f} days."
+            ),
             diagnostic_report=report,
         )
 

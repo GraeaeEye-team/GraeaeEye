@@ -93,7 +93,10 @@ def clamp(val: float, low: float = 0.0, high: float = 100.0) -> float:
     :raises ValueError: Если low > high.
     """
     if low > high:
-        raise ValueError(f"Нижняя граница low ({low}) не может быть больше верхней границы high ({high})")
+        raise ValueError(
+            f"Нижняя граница low ({low}) не может быть больше "
+            f"верхней границы high ({high})"
+        )
     if val < low:
         return float(low)
     if val > high:
