@@ -390,3 +390,41 @@ class AnalysisLogRecord:
     message: str
     timestamp: Optional[datetime] = None
 
+
+# =====================================================================
+# 7. КОНСОЛИДИРОВАННЫЙ СЛЕПОК ДАННЫХ ДЛЯ АНАЛИТИЧЕСКОГО ЯДРА (ML)
+# =====================================================================
+
+@dataclass
+class CompanyDataSnapshot:
+    """
+    Консолидированный снимок данных предприятия для аналитического ядра ML.
+    Объединяет все 9 реляционных срезов и метаданные на дату анализа.
+    """
+    business: BusinessRecord
+    shareholders: List[ShareholderRecord] = field(default_factory=list)
+    web_reputation: Optional[WebReputationRecord] = None
+    macro_sector_metrics: Optional[MacroSectorMetricRecord] = None
+    counterparties: List[CounterpartyRecord] = field(default_factory=list)
+    invoices: List[InvoiceRecord] = field(default_factory=list)
+    bank_accounts: List[BankAccountRecord] = field(default_factory=list)
+    transactions: List[TransactionRecord] = field(default_factory=list)
+    credit_obligations: List[CreditObligationRecord] = field(default_factory=list)
+    as_of_date: Optional[date] = None
+    business_id: Optional[UUID] = None
+
+    def __post_init__(self) -> None:
+        if self.business_id is None and self.business is not None:
+            self.business_id = getattr(self.business, "business_id", None)
+        if self.as_of_date is None:
+            self.as_of_date = date.today()
+
+    @property
+    def macro_metrics(self) -> Optional[MacroSectorMetricRecord]:
+        """Алиас для обратной совместимости с субмодулем макро-риска."""
+        return self.macro_sector_metrics
+
+    @macro_metrics.setter
+    def macro_metrics(self, value: Optional[MacroSectorMetricRecord]) -> None:
+        self.macro_sector_metrics = value
+

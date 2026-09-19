@@ -2,15 +2,18 @@
 Master Pipeline Orchestrator for the Underwriting Analytical Core.
 Runs all 9 autonomous submodules concurrently against CompanyDataSnapshot,
 builds the standardized 18-element feature vector, and compiles the diagnostic report dossier.
+Provides asynchronous database-backed evaluation via CompanyDataLoader.
 """
 from dataclasses import dataclass
 from datetime import date, datetime
 import logging
-from typing import Any
+from typing import Any, Optional
 from uuid import UUID
 
 try:
+    from src.fintech_app.db.connection import Database
     from src.fintech_app.ml.base import EvaluationStatus, SubmoduleResult
+    from src.fintech_app.ml.loader import CompanyDataLoader
     from src.fintech_app.ml.submodule_ownership import OwnershipStructureEvaluator
     from src.fintech_app.ml.submodule_reputation import WebReputationEvaluator
     from src.fintech_app.ml.submodule_macro import MacroSectorRiskEvaluator
@@ -21,7 +24,9 @@ try:
     from src.fintech_app.ml.submodule_receivables import ReceivablesQualityEvaluator
     from src.fintech_app.ml.submodule_credit_discipline import CreditDisciplineLeverageEvaluator
 except ModuleNotFoundError:
+    from fintech_app.db.connection import Database
     from fintech_app.ml.base import EvaluationStatus, SubmoduleResult
+    from fintech_app.ml.loader import CompanyDataLoader
     from fintech_app.ml.submodule_ownership import OwnershipStructureEvaluator
     from fintech_app.ml.submodule_reputation import WebReputationEvaluator
     from fintech_app.ml.submodule_macro import MacroSectorRiskEvaluator
@@ -214,17 +219,91 @@ class UnderwritingAnalyticalPipeline:
             compiled_dossier_text=compiled_dossier_text,
         )
 
+    async def run_analysis_from_db(
+        self,
+        db: Database,
+        business_id: UUID,
+        as_of_date: Optional[date] = None,
+        run_id: Optional[UUID] = None,
+    ) -> UnderwritingPipelineResult:
+        """
+        Asynchronously loads the complete financial graph for the company from PostgreSQL,
+        compiles the typed CompanyDataSnapshot, and executes the underwriting evaluation pipeline.
+
+        :param db: Active Database connection instance.
+        :param business_id: UUID of the company to analyze.
+        :param as_of_date: Optional cutoff evaluation date (defaults to date.today()).
+        :param run_id: Optional analysis run UUID for real-time telemetry logging in analysis_logs.
+        :return: UnderwritingPipelineResult containing the canonical 18D feature vector.
+        """
+        effective_date = as_of_date or date.today()
+
+        if run_id is not None:
+            await db.add_record_to_analysis_logs(
+                run_id=run_id,
+                severity="INFO",
+                stage="DATA_LOAD",
+                message="Загрузка финансового графа предприятия из PostgreSQL",
+            )
+
+        loader = CompanyDataLoader(db)
+        try:
+            snapshot = await loader.load_snapshot(
+                business_id=business_id, as_of_date=effective_date
+            )
+        except Exception as exc:
+            logger.error(
+                "Failed to load financial snapshot for business %s: %s",
+                business_id,
+                exc,
+                exc_info=True,
+            )
+            if run_id is not None:
+                await db.add_record_to_analysis_logs(
+                    run_id=run_id,
+                    severity="ERROR",
+                    stage="DATA_LOAD",
+                    message=f"Ошибка загрузки финансового графа предприятия: {exc}",
+                )
+            raise
+
+        if run_id is not None:
+            await db.add_record_to_analysis_logs(
+                run_id=run_id,
+                severity="INFO",
+                stage="ML_EVALUATION",
+                message="Запуск 9 аналитических субмодулей",
+            )
+
+        return self.run_analysis(snapshot=snapshot, as_of_date=effective_date)
+
 
 def run_full_ml_analysis(
     snapshot: Any, as_of_date: date | None = None
 ) -> UnderwritingPipelineResult:
-    """Convenience helper function to execute full pipeline analysis."""
+    """Convenience helper function to execute full pipeline analysis on a snapshot."""
     pipeline = UnderwritingAnalyticalPipeline()
     return pipeline.run_analysis(snapshot, as_of_date=as_of_date)
 
 
+async def run_analysis_from_db(
+    db: Database,
+    business_id: UUID,
+    as_of_date: Optional[date] = None,
+    run_id: Optional[UUID] = None,
+) -> UnderwritingPipelineResult:
+    """Convenience async helper to load data from database and execute full pipeline analysis."""
+    pipeline = UnderwritingAnalyticalPipeline()
+    return await pipeline.run_analysis_from_db(
+        db=db, business_id=business_id, as_of_date=as_of_date, run_id=run_id
+    )
+
+
 __all__ = [
+    "CompanyDataLoader",
     "UnderwritingAnalyticalPipeline",
     "UnderwritingPipelineResult",
+    "run_analysis_from_db",
     "run_full_ml_analysis",
 ]
+
