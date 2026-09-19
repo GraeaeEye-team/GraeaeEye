@@ -471,7 +471,9 @@ class MockDatabase:
             "business_id": business_id,
             "counterparty_id": counterparty_id,
             "invoice_type": invoice_type,
-            "gross_amount": gross_amount,
+            "gross_amount": (
+                abs(gross_amount) if gross_amount is not None else gross_amount
+            ),
             "issue_date": issue_date,
             "due_date": due_date,
             "actual_payment_date": actual_payment_date,
@@ -578,7 +580,7 @@ class MockDatabase:
             "counterparty_id": counterparty_id,
             "invoice_id": invoice_id,
             "timestamp": timestamp,
-            "amount": amount,
+            "amount": abs(amount) if amount is not None else amount,
             "direction": direction,
             "category": category,
             "liquidity_class": liquidity_class,
@@ -638,9 +640,17 @@ class MockDatabase:
             "business_id": business_id,
             "lender_name": lender_name,
             "facility_type": facility_type,
-            "principal_amount": principal_amount,
-            "outstanding_balance": outstanding_balance,
-            "monthly_payment": monthly_payment,
+            "principal_amount": (
+                abs(principal_amount) if principal_amount is not None else principal_amount
+            ),
+            "outstanding_balance": (
+                abs(outstanding_balance)
+                if outstanding_balance is not None
+                else outstanding_balance
+            ),
+            "monthly_payment": (
+                abs(monthly_payment) if monthly_payment is not None else monthly_payment
+            ),
             "past_due_30d_count": past_due_30d_count,
             "past_due_90d_count": past_due_90d_count,
             "historical_defaults_count": historical_defaults_count,
@@ -795,6 +805,8 @@ class MockDatabase:
         submodules_reports: Optional[List[Dict[str, Any]]] = None,
         llm_final_summary: Optional[str] = None,
         universal_score: Optional[Decimal] = None,
+        verdict_category: Optional[str] = None,
+        recommendation: Optional[str] = None,
         failure_reason: Optional[str] = None,
     ) -> DatabaseReport:
         data: Dict[str, Any] = {
@@ -811,6 +823,8 @@ class MockDatabase:
             "submodules_reports": submodules_reports,
             "llm_final_summary": llm_final_summary,
             "universal_score": universal_score,
+            "verdict_category": verdict_category,
+            "recommendation": recommendation,
             "failure_reason": failure_reason,
             "created_at": datetime.now(),
         }
@@ -919,6 +933,8 @@ class MockDatabase:
             rec = copy.deepcopy(r)
             if "transaction_id" not in rec or rec["transaction_id"] is None:
                 rec["transaction_id"] = uuid4()
+            if rec.get("amount") is not None:
+                rec["amount"] = abs(rec["amount"])
             self._storage["transactions"].append(rec)
             inserted.append(rec)
         return DatabaseReport(
@@ -946,6 +962,8 @@ class MockDatabase:
             rec = copy.deepcopy(r)
             if "invoice_id" not in rec or rec["invoice_id"] is None:
                 rec["invoice_id"] = uuid4()
+            if rec.get("gross_amount") is not None:
+                rec["gross_amount"] = abs(rec["gross_amount"])
             self._storage["invoices"].append(rec)
             inserted.append(rec)
         return DatabaseReport(

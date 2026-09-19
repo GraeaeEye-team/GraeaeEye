@@ -90,7 +90,8 @@ class OwnershipStructureEvaluator(BaseSubmoduleEvaluator):
             f"NUMERICAL INDICES:\n"
             f"- Ownership Dispersion Index: {dispersion_idx:.1f} / 100.0\n"
             f"- Governance Independence Index: {governance_idx:.1f} / 100.0\n"
-            f"SUMMARY: HHI_Shareholders calculated at {hhi:.1f}. Management holds {moor * 100.0:.1f}% of equity. "
+            f"SUMMARY: HHI_Shareholders calculated at {hhi:.1f}. "
+            f"Management holds {moor * 100.0:.1f}% of equity. "
             f"Independent directors occupy {ind_seats} of {total_seats} seats."
         )
 
@@ -103,7 +104,10 @@ class OwnershipStructureEvaluator(BaseSubmoduleEvaluator):
                 "Ownership_Dispersion_Index": dispersion_idx,
                 "Governance_Independence_Index": governance_idx,
             },
-            summary=f"HHI: {hhi:.1f}, Management Equity: {moor * 100.0:.1f}%, Board Independence: {gir * 100.0:.1f}%.",
+            summary=(
+                f"HHI: {hhi:.1f}, Management Equity: {moor * 100.0:.1f}%, "
+                f"Board Independence: {gir * 100.0:.1f}%."
+            ),
             diagnostic_report=report,
         )
 

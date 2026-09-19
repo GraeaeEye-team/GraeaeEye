@@ -31,7 +31,12 @@ class MacroSectorRiskEvaluator(BaseSubmoduleEvaluator):
         super().__init__(submodule_code="MSR", impact_weight=0.05)
 
     def evaluate(self, snapshot: Any) -> SubmoduleResult:
-        macro = getattr(snapshot, "macro_metrics", None) or getattr(snapshot, "macro_sector_metrics", None) if snapshot else None
+        macro = (
+            getattr(snapshot, "macro_metrics", None)
+            or getattr(snapshot, "macro_sector_metrics", None)
+            if snapshot
+            else None
+        )
         business = getattr(snapshot, "business", None) if snapshot else None
         industry_code = str(getattr(business, "industry_code", "N/A")) if business else "N/A"
 
@@ -62,7 +67,9 @@ class MacroSectorRiskEvaluator(BaseSubmoduleEvaluator):
         macro_stability = clamp(100.0 - ((outlook_score - 1.0) * 11.11))
 
         # 2. Consolidated Sector Vitality Index
-        vitality_idx = clamp((0.40 * growth_score) + (0.35 * default_safety) + (0.25 * macro_stability))
+        vitality_idx = clamp(
+            (0.40 * growth_score) + (0.35 * default_safety) + (0.25 * macro_stability)
+        )
 
         # 3. Verdict determination
         if vitality_idx >= 70.0:
@@ -79,7 +86,8 @@ class MacroSectorRiskEvaluator(BaseSubmoduleEvaluator):
             f"NUMERICAL INDICES:\n"
             f"- Sector Vitality Index: {vitality_idx:.1f} / 100.0\n"
             f"SUMMARY: Industry code {industry_code} exhibits YoY growth of {growth_rate:.1f}% "
-            f"and average default rate of {default_rate:.1f}%. Macro sector threat index is rated {int(outlook_score)}/10."
+            f"and average default rate of {default_rate:.1f}%. "
+            f"Macro sector threat index is rated {int(outlook_score)}/10."
         )
 
         return SubmoduleResult(
