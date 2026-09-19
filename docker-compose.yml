@@ -4,36 +4,49 @@ services:
     container_name: graeae_postgres
     restart: always
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: graeae_eye_db
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-graeae_eye_db}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-graeae_eye_db}"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+      start_period: 2s
+    networks:
+      - internal_net
 
   backend:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: graeae_backend
     restart: always
     ports:
       - "8000:8000"
     environment:
+      - APP_ENV=development
       - POSTGRES_SERVER=db
       - POSTGRES_PORT=5432
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=graeae_eye_db
-    depends_on:
-      - db
+      - POSTGRES_USER=${POSTGRES_USER:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_DB=${POSTGRES_DB:-graeae_eye_db}
     volumes:
-      - ./storage:/app/storage
-    develop:
-      watch:
-        - action: sync
-          path: .
-          target: /app
+      - .:/app
+      - /app/__pycache__
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal_net
 
 volumes:
   postgres_data:
 
+networks:
+  internal_net:
+    driver: bridge
