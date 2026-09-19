@@ -95,7 +95,8 @@ class WebReputationEvaluator(BaseSubmoduleEvaluator):
             f"- Legal Cleanliness Index: {legal_idx:.1f} / 100.0\n"
             f"- Public Reputation Index: {reputation_idx:.1f} / 100.0\n"
             f"SUMMARY: Identified {active_lawsuits} active lawsuits totaling {claims:,.2f} MDL. "
-            f"Sanctions check: {sanctions_status}. News sentiment classified at {sentiment_str}."
+            f"Sanctions check: {sanctions_status}. "
+            f"News sentiment classified at {sentiment_str}."
         )
 
         return SubmoduleResult(
@@ -107,7 +108,10 @@ class WebReputationEvaluator(BaseSubmoduleEvaluator):
                 "Legal_Cleanliness_Index": legal_idx,
                 "Public_Reputation_Index": reputation_idx,
             },
-            summary=f"Legal Cleanliness: {legal_idx:.1f}, Reputation: {reputation_idx:.1f}, Sanctions: {sanctions_status}.",
+            summary=(
+                f"Legal Cleanliness: {legal_idx:.1f}, Reputation: {reputation_idx:.1f}, "
+                f"Sanctions: {sanctions_status}."
+            ),
             diagnostic_report=report,
         )
 

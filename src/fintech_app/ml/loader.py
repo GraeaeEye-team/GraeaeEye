@@ -292,10 +292,13 @@ class CompanyDataLoader:
                 inv_type = InvoiceType.RECEIVABLE
 
             status_raw = str(r.get("status", "OUTSTANDING")).upper()
-            try:
-                status = InvoiceStatus(status_raw)
-            except ValueError:
-                status = InvoiceStatus.OUTSTANDING
+            if status_raw == "PAID":
+                status = InvoiceStatus.SETTLED
+            else:
+                try:
+                    status = InvoiceStatus(status_raw)
+                except ValueError:
+                    status = InvoiceStatus.OUTSTANDING
 
             records.append(
                 InvoiceRecord(
@@ -359,10 +362,17 @@ class CompanyDataLoader:
                 direction = TransactionDirection.INFLOW
 
             cat_raw = str(r.get("category", "OTHER")).upper()
-            try:
-                category = TransactionCategory(cat_raw)
-            except ValueError:
-                category = TransactionCategory.OTHER
+            if cat_raw == "REVENUE":
+                category = TransactionCategory.CLIENT_REVENUE
+            elif cat_raw == "OPERATING_EXPENSE":
+                category = TransactionCategory.SUPPLIER_PAYMENT
+            elif cat_raw == "DEBT_SERVICE":
+                category = TransactionCategory.CREDIT_REPAYMENT
+            else:
+                try:
+                    category = TransactionCategory(cat_raw)
+                except ValueError:
+                    category = TransactionCategory.OTHER
 
             liq_raw = str(r.get("liquidity_class", "IMMEDIATE_CASH")).upper()
             try:
@@ -500,18 +510,19 @@ class CompanyDataLoader:
         # Step 3: Query macroeconomic metrics by industry code
         macro_metrics = None
         if business_record.industry_code:
+            clean_ind = business_record.industry_code.strip()
             macro_rep = await self.db.get_records_from_macro_sector_metrics(
                 find_only_first=True,
-                industry_code=business_record.industry_code,
+                industry_code=clean_ind,
             )
             if macro_rep.success and macro_rep.data:
                 macro_metrics = self._parse_macro_sector_metrics(
-                    macro_rep.data, business_record.industry_code
+                    macro_rep.data, clean_ind
                 )
             else:
                 logger.debug(
                     "No macro sector metrics found for industry %s",
-                    business_record.industry_code,
+                    clean_ind,
                 )
 
         # Step 4: Parse records with graceful degradation
@@ -567,7 +578,8 @@ class CompanyDataLoader:
 
         logger.info(
             "Successfully compiled CompanyDataSnapshot for %s (%s). "
-            "Shareholders: %d, Counterparties: %d, Invoices: %d, Accounts: %d, Transactions: %d, Obligations: %d",
+            "Shareholders: %d, Counterparties: %d, Invoices: %d, Accounts: %d, "
+            "Transactions: %d, Obligations: %d",
             business_record.legal_name,
             effective_biz_id,
             len(shareholders),

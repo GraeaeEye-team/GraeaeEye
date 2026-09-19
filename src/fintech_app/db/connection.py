@@ -6,7 +6,6 @@ Specification: docs/database_architecture-v2.md
 
 from __future__ import annotations
 
-import copy
 from datetime import date, datetime
 from decimal import Decimal
 import logging
@@ -668,7 +667,7 @@ class Database:
             "business_id": business_id,
             "counterparty_id": counterparty_id,
             "invoice_type": invoice_type,
-            "gross_amount": gross_amount,
+            "gross_amount": abs(gross_amount) if gross_amount is not None else gross_amount,
             "issue_date": issue_date,
             "due_date": due_date,
             "actual_payment_date": actual_payment_date,
@@ -778,7 +777,7 @@ class Database:
             "counterparty_id": counterparty_id,
             "invoice_id": invoice_id,
             "timestamp": timestamp,
-            "amount": amount,
+            "amount": abs(amount) if amount is not None else amount,
             "direction": direction,
             "category": category,
             "liquidity_class": liquidity_class,
@@ -840,9 +839,17 @@ class Database:
             "business_id": business_id,
             "lender_name": lender_name,
             "facility_type": facility_type,
-            "principal_amount": principal_amount,
-            "outstanding_balance": outstanding_balance,
-            "monthly_payment": monthly_payment,
+            "principal_amount": (
+                abs(principal_amount) if principal_amount is not None else principal_amount
+            ),
+            "outstanding_balance": (
+                abs(outstanding_balance)
+                if outstanding_balance is not None
+                else outstanding_balance
+            ),
+            "monthly_payment": (
+                abs(monthly_payment) if monthly_payment is not None else monthly_payment
+            ),
             "past_due_30d_count": past_due_30d_count,
             "past_due_90d_count": past_due_90d_count,
             "historical_defaults_count": historical_defaults_count,
@@ -1000,6 +1007,8 @@ class Database:
         submodules_reports: Optional[List[Dict[str, Any]]] = None,
         llm_final_summary: Optional[str] = None,
         universal_score: Optional[Decimal] = None,
+        verdict_category: Optional[str] = None,
+        recommendation: Optional[str] = None,
         failure_reason: Optional[str] = None,
     ) -> DatabaseReport:
         data: Dict[str, Any] = {
@@ -1016,6 +1025,8 @@ class Database:
             "submodules_reports": submodules_reports,
             "llm_final_summary": llm_final_summary,
             "universal_score": universal_score,
+            "verdict_category": verdict_category,
+            "recommendation": recommendation,
             "failure_reason": failure_reason,
         }
         return await self._execute_insert("analysis_runs", data)
@@ -1157,6 +1168,7 @@ class Database:
                                     if not isinstance(r["amount"], Decimal)
                                     else r["amount"]
                                 )
+                                amt = abs(amt)
                                 direction = (
                                     r["direction"].value
                                     if hasattr(r["direction"], "value")
@@ -1251,6 +1263,7 @@ class Database:
                                     if not isinstance(r["gross_amount"], Decimal)
                                     else r["gross_amount"]
                                 )
+                                gross = abs(gross)
                                 issue_date = r["issue_date"]
                                 due_date = r["due_date"]
                                 actual_payment_date = r.get("actual_payment_date")

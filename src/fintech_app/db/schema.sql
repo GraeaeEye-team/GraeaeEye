@@ -4,7 +4,7 @@
 -- Specification: docs/database_architecture-v2.md
 -- =============================================================================
 
--- Включение расширения для генерации UUID v4 (в PG 16 функция gen_random_uuid() доступна из коробки)
+-- Включение расширения для UUID v4 (в PG 16 функция gen_random_uuid() доступна из коробки)
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- =============================================================================
@@ -27,7 +27,9 @@ CREATE TABLE IF NOT EXISTS shareholders (
     ownership_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     business_id UUID NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
     shareholder_name VARCHAR(255) NOT NULL,
-    equity_percentage DECIMAL(5,2) NOT NULL CHECK (equity_percentage >= 0.00 AND equity_percentage <= 100.00),
+    equity_percentage DECIMAL(5,2) NOT NULL CHECK (
+        equity_percentage >= 0.00 AND equity_percentage <= 100.00
+    ),
     is_management_member BOOLEAN NOT NULL DEFAULT FALSE
 );
 CREATE INDEX IF NOT EXISTS idx_shareholders_biz ON shareholders(business_id);
@@ -42,12 +44,17 @@ CREATE TABLE IF NOT EXISTS web_reputation (
     business_id UUID NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
     scan_timestamp TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     active_lawsuits_count INT NOT NULL DEFAULT 0 CHECK (active_lawsuits_count >= 0),
-    total_lawsuit_claims_amount DECIMAL(18,2) NOT NULL DEFAULT 0.00 CHECK (total_lawsuit_claims_amount >= 0.00),
+    total_lawsuit_claims_amount DECIMAL(18,2) NOT NULL DEFAULT 0.00 CHECK (
+        total_lawsuit_claims_amount >= 0.00
+    ),
     is_in_sanctions_list BOOLEAN NOT NULL DEFAULT FALSE,
-    news_sentiment_score DECIMAL(4,3) CHECK (news_sentiment_score >= -1.000 AND news_sentiment_score <= 1.000),
+    news_sentiment_score DECIMAL(4,3) CHECK (
+        news_sentiment_score >= -1.000 AND news_sentiment_score <= 1.000
+    ),
     web_traffic_monthly_visits INT CHECK (web_traffic_monthly_visits >= 0)
 );
-CREATE INDEX IF NOT EXISTS idx_reputation_biz_time ON web_reputation(business_id, scan_timestamp DESC);
+CREATE INDEX IF NOT EXISTS idx_reputation_biz_time
+    ON web_reputation(business_id, scan_timestamp DESC);
 
 -- 4. Отраслевые макроэкономические метрики
 CREATE TABLE IF NOT EXISTS macro_sector_metrics (
@@ -58,7 +65,8 @@ CREATE TABLE IF NOT EXISTS macro_sector_metrics (
     sector_default_rate DECIMAL(5,2) NOT NULL CHECK (sector_default_rate >= 0.00),
     risk_outlook_score INT NOT NULL CHECK (risk_outlook_score BETWEEN 1 AND 10)
 );
-CREATE INDEX IF NOT EXISTS idx_macro_sector_date ON macro_sector_metrics(industry_code, reference_date DESC);
+CREATE INDEX IF NOT EXISTS idx_macro_sector_date
+    ON macro_sector_metrics(industry_code, reference_date DESC);
 
 -- =============================================================================
 -- КЛАСТЕР 3: КОММЕРЧЕСКИЙ ГРАФ И ОПЕРАЦИОННЫЙ ДЕНЕЖНЫЙ ПОТОК (COMMERCIAL GRAPH)
@@ -70,7 +78,9 @@ CREATE TABLE IF NOT EXISTS counterparties (
     business_id UUID NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
     tax_id VARCHAR(32),
     legal_name VARCHAR(255) NOT NULL,
-    counterparty_role VARCHAR(16) NOT NULL CHECK (counterparty_role IN ('CLIENT', 'SUPPLIER', 'MIXED'))
+    counterparty_role VARCHAR(16) NOT NULL CHECK (
+        counterparty_role IN ('CLIENT', 'SUPPLIER', 'MIXED', 'BOTH')
+    )
 );
 CREATE INDEX IF NOT EXISTS idx_counterparties_biz ON counterparties(business_id);
 
@@ -84,7 +94,9 @@ CREATE TABLE IF NOT EXISTS invoices (
     issue_date DATE NOT NULL,
     due_date DATE NOT NULL,
     actual_payment_date DATE,
-    status VARCHAR(16) NOT NULL CHECK (status IN ('PAID', 'OUTSTANDING', 'OVERDUE', 'DEFAULTED'))
+    status VARCHAR(16) NOT NULL CHECK (
+        status IN ('PAID', 'SETTLED', 'OUTSTANDING', 'OVERDUE', 'DEFAULTED', 'DISPUTED')
+    )
 );
 CREATE INDEX IF NOT EXISTS idx_invoices_biz_status ON invoices(business_id, status);
 CREATE INDEX IF NOT EXISTS idx_invoices_due_date ON invoices(due_date);
@@ -111,10 +123,13 @@ CREATE TABLE IF NOT EXISTS transactions (
     amount DECIMAL(18,2) NOT NULL CHECK (amount >= 0.00),
     direction VARCHAR(8) NOT NULL CHECK (direction IN ('INFLOW', 'OUTFLOW')),
     category VARCHAR(32) NOT NULL CHECK (category IN (
-        'REVENUE', 'OPERATING_EXPENSE', 'PAYROLL', 'TAX', 'DEBT_SERVICE', 'DIVIDEND', 'OTHER'
+        'REVENUE', 'CLIENT_REVENUE', 'OPERATING_EXPENSE', 'SUPPLIER_PAYMENT',
+        'PAYROLL', 'TAX', 'DEBT_SERVICE', 'CREDIT_REPAYMENT', 'INTEREST_FEE',
+        'DIVIDEND', 'OTHER'
     )),
     liquidity_class VARCHAR(24) NOT NULL DEFAULT 'IMMEDIATE_CASH' CHECK (liquidity_class IN (
-        'IMMEDIATE_CASH', 'RESTRICTED_ESCROW', 'TERM_DEPOSIT'
+        'IMMEDIATE_CASH', 'RESTRICTED_ESCROW', 'TERM_DEPOSIT',
+        'SHORT_TERM_RECEIVABLE', 'TIED_CAPITAL'
     ))
 );
 CREATE INDEX IF NOT EXISTS idx_trans_biz_time ON transactions(business_id, timestamp DESC);
@@ -130,7 +145,9 @@ CREATE TABLE IF NOT EXISTS credit_obligations (
     obligation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     business_id UUID NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
     lender_name VARCHAR(255) NOT NULL,
-    facility_type VARCHAR(32) NOT NULL CHECK (facility_type IN ('TERM_LOAN', 'LEASING', 'LINE_OF_CREDIT')),
+    facility_type VARCHAR(32) NOT NULL CHECK (facility_type IN (
+        'TERM_LOAN', 'CREDIT_LINE', 'LINE_OF_CREDIT', 'OVERDRAFT', 'LEASING', 'FACTORING'
+    )),
     principal_amount DECIMAL(18,2) NOT NULL CHECK (principal_amount >= 0.00),
     outstanding_balance DECIMAL(18,2) NOT NULL CHECK (outstanding_balance >= 0.00),
     monthly_payment DECIMAL(18,2) NOT NULL CHECK (monthly_payment >= 0.00),
@@ -181,6 +198,8 @@ CREATE TABLE IF NOT EXISTS analysis_runs (
     submodules_reports JSONB,
     llm_final_summary TEXT,
     universal_score DECIMAL(5,2) CHECK (universal_score >= 0.00 AND universal_score <= 100.00),
+    verdict_category VARCHAR(32),
+    recommendation VARCHAR(32),
     failure_reason TEXT,
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     completed_at TIMESTAMP WITH TIME ZONE
