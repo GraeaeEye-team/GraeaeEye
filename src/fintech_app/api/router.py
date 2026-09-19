@@ -1,12 +1,13 @@
 """
-Главный маршрутизатор (Router) API версии 1.
-Регистрирует и объединяет эндпоинты модулей загрузки, прогнозирования и сценариев.
+Main API Router for GraeaeEye API v1.
+
+Aggregates authentication and analysis endpoints under the /api/v1 prefix.
 """
+
 from fastapi import APIRouter
-from .endpoints import forecast, scenarios, upload
+
+from .endpoints import analysis, auth
 
 api_router = APIRouter(prefix="/api/v1")
-api_router.include_router(upload.router, tags=["Data Ingestion"])
-api_router.include_router(forecast.router, tags=["Cash Flow Forecast"])
-api_router.include_router(scenarios.router, tags=["What-If Scenarios"])
-
+api_router.include_router(auth.router, prefix="/auth", tags=["Authentication"])
+api_router.include_router(analysis.router, tags=["Analysis", "Health"])
