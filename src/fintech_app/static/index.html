@@ -13,13 +13,11 @@
 			var x = document.getElementById("status");
 			x.innerHTML = xmlHttp.responseText;
 		}
-		document.addEventListener('DOMContentLoaded', function() {
-			upd_status();
-		}, false);
+		/* document.addEventListener('DOMContentLoaded', function() { upd_status(); }, false); */
 	</script>
 </head>
 <body>
 	<center><h1>Hello, World!</h1></center>
-	<button onclick="upd_status">health:</button><span id="status"></span>
+	<button onclick="upd_status()">health:</button><span id="status"></span>
 </body>
 </html>
