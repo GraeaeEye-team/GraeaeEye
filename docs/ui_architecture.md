@@ -80,7 +80,7 @@ The Web Module shares the primary PostgreSQL instance with the Analytical Engine
 
 ## 3. USER INTERACTION ARCHITECTURE & DETAILED PAGE SPECIFICATIONS
 
-1. Authentication & Session Gateway (`/login`, `/register`)
+1. Authentication & Session Gateway (`/login`, `/register`) — frontend page routes
     * User Experience: Clean, distraction-free card interface. Form inputs validate email format and password entropy in real time.
     * Functionality: Submits JSON payloads to `/api/v1/auth/token`. On success, receives JWT within an `HttpOnly`, `SameSite=Lax`, `Secure` cookie. An active session redirects immediately to the Interactive Documentation page if first login, or to the Analysis Wizard otherwise.
 
@@ -374,7 +374,7 @@ When running in UI development mode without a running FastAPI backend, the front
 
     + Cross-Origin Resource Sharing is restricted strictly to designated internal origins.
 
-    + CSRF Double-Submit Cookie patterns are enforced for all state-changing endpoints (/api/v1/analysis/start, /api/v1/auth/login).
+    + CSRF Double-Submit Cookie patterns are enforced for all state-changing endpoints (/api/v1/analysis/start, /api/v1/auth/token). (Phase 2 scope)
 
 2. Ingestion Boundaries & DoS Prevention
 
