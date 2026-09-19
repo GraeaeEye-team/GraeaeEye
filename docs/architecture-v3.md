@@ -38,8 +38,11 @@ credit discipline, and external open-source intelligence.
 2. RELATIONAL DATA LAYER: POSTGRESQL GRAPH SCHEMA
 --------------------------------------------------------------------------------
 The data layer maps raw accounting records, bank ledgers, and external feeds into
-a connected entity graph. Primary identifiers use RFC-4122 UUIDs. Monetary amounts
+a connected entity graph comprising strictly 13 canonical relational tables partitioned
+into 5 logical clusters. Primary identifiers use RFC-4122 UUIDs. Monetary amounts
 are stored as fixed-point DECIMAL(18,2) to eliminate floating-point rounding errors.
+The `analysis_runs` table acts as the sole, permanent audit ledger preserving the complete
+history of both completed and failed pipeline executions; no 14th table exists.
 
 --------------------------------------------------------------------------------
 CLUSTER 2.1: CORE CORPORATE IDENTITY & GOVERNANCE
@@ -94,7 +97,7 @@ CLUSTER 2.3: COMMERCIAL GRAPH & CASH FLOW LEDGER
   - business_id (UUID, FK -> businesses.business_id, NOT NULL): Relationship owner.
   - tax_id (VARCHAR(32), NULL): Counterparty national tax registration number.
   - legal_name (VARCHAR(255), NOT NULL): Name of client or supplier.
-  - counterparty_role (VARCHAR(16), NOT NULL): Enum ('CLIENT', 'SUPPLIER', 'MIXED').
+  - counterparty_role (VARCHAR(16), NOT NULL): Enum ('CLIENT', 'SUPPLIER', 'MIXED', 'BOTH').
 
 * Table: invoices
   Commercial trade receivables and trade payables tracking actual cash flow discipline.
@@ -106,7 +109,8 @@ CLUSTER 2.3: COMMERCIAL GRAPH & CASH FLOW LEDGER
   - issue_date (DATE, NOT NULL): Issuance date.
   - due_date (DATE, NOT NULL): Contractual payment deadline.
   - actual_payment_date (DATE, NULL): Actual date full settlement was recorded.
-  - status (VARCHAR(16), NOT NULL): Enum ('PAID', 'OUTSTANDING', 'OVERDUE', 'DEFAULTED').
+  - status (VARCHAR(16), NOT NULL): Enum ('PAID', 'SETTLED', 'OUTSTANDING', 'OVERDUE',
+                                           'DEFAULTED', 'DISPUTED').
 
 * Table: bank_accounts
   Real-time operating cash balances and credit limits across banking institutions.
@@ -124,12 +128,15 @@ CLUSTER 2.3: COMMERCIAL GRAPH & CASH FLOW LEDGER
   - counterparty_id (UUID, FK -> counterparties.counterparty_id, NULL): Identified partner.
   - invoice_id (UUID, FK -> invoices.invoice_id, NULL): Relational invoice link.
   - timestamp (TIMESTAMP WITH TIME ZONE, NOT NULL): Execution timestamp.
-  - amount (DECIMAL(18,2), NOT NULL): Monetary value.
+  - amount (DECIMAL(18,2), NOT NULL): Monetary value (strictly non-negative).
   - direction (VARCHAR(8), NOT NULL): Enum ('INFLOW', 'OUTFLOW').
-  - category (VARCHAR(32), NOT NULL): Enum ('REVENUE', 'OPERATING_EXPENSE', 'PAYROLL', 
-                                            'TAX', 'DEBT_SERVICE', 'DIVIDEND', 'OTHER').
-  - liquidity_class (VARCHAR(24), NOT NULL): Enum ('IMMEDIATE_CASH', 'RESTRICTED_ESCROW',
-                                                  'TERM_DEPOSIT').
+  - category (VARCHAR(32), NOT NULL): Enum ('REVENUE', 'CLIENT_REVENUE', 'OPERATING_EXPENSE',
+                                            'SUPPLIER_PAYMENT', 'PAYROLL', 'TAX', 'DEBT_SERVICE',
+                                            'CREDIT_REPAYMENT', 'INTEREST_FEE', 'DIVIDEND',
+                                            'OTHER').
+  - liquidity_class (VARCHAR(24), NOT NULL): Enum ('IMMEDIATE_CASH', 'SHORT_TERM_RECEIVABLE',
+                                                   'RESTRICTED_ESCROW', 'TERM_DEPOSIT',
+                                                   'TIED_CAPITAL').
 
 --------------------------------------------------------------------------------
 CLUSTER 2.4: LIABILITIES & REPAYMENT TRACK RECORD
@@ -139,7 +146,8 @@ CLUSTER 2.4: LIABILITIES & REPAYMENT TRACK RECORD
   - obligation_id (UUID, PK): Unique facility identifier.
   - business_id (UUID, FK -> businesses.business_id, NOT NULL): Borrower.
   - lender_name (VARCHAR(255), NOT NULL): Financial institution or debt holder.
-  - facility_type (VARCHAR(32), NOT NULL): Enum ('TERM_LOAN', 'LEASING', 'LINE_OF_CREDIT').
+  - facility_type (VARCHAR(32), NOT NULL): Enum ('TERM_LOAN', 'CREDIT_LINE', 'LINE_OF_CREDIT',
+                                                 'OVERDRAFT', 'LEASING', 'FACTORING').
   - principal_amount (DECIMAL(18,2), NOT NULL): Original facility size.
   - outstanding_balance (DECIMAL(18,2), NOT NULL): Current unpaid principal balance.
   - monthly_payment (DECIMAL(18,2), NOT NULL): Contractual monthly debt service cost.
@@ -169,11 +177,13 @@ CLUSTER 2.5: WEB APPLICATION IDENTITY & EXECUTION TELEMETRY
   - auto_expand_reports (BOOLEAN, DEFAULT TRUE): Viewport state preference.
 
 * Table: analysis_runs
-  Tracks evaluation lifecycle, ingested payloads, feature vectors, and LLM output.
+  Permanent historical audit ledger. Tracks evaluation lifecycle, inputs, vectors, and verdicts.
+  Directly serves the historical runs overview (/history); no 14th table exists.
   - run_id (UUID, PK): Unique evaluation job identifier.
   - user_id (UUID, FK -> users.user_id, NOT NULL): Requesting user.
   - business_id (UUID, FK -> businesses.business_id, NULL): Link to business entity.
-  - status (VARCHAR(32), NOT NULL): Enum ('QUEUED', 'PARSING', 'PROCESSING', 'COMPLETED', 'FAILED', 'DEGRADED').
+  - status (VARCHAR(32), NOT NULL): Enum ('QUEUED', 'PARSING', 'PROCESSING', 'COMPLETED',
+                                           'FAILED', 'DEGRADED').
   - input_company_name (VARCHAR(255), NOT NULL): Declared enterprise name.
   - input_tax_id (VARCHAR(32), NOT NULL): Declared national tax ID.
   - input_industry_code (VARCHAR(16), NOT NULL): Sector classification code.
@@ -183,7 +193,11 @@ CLUSTER 2.5: WEB APPLICATION IDENTITY & EXECUTION TELEMETRY
   - submodules_reports (JSONB, NULL): Structured submodule verdicts and reports.
   - llm_final_summary (TEXT, NULL): Generated narrative synthesis from LLM.
   - universal_score (DECIMAL(5,2), NULL): Normalized overall score (0.00 to 100.00).
-  - failure_reason (TEXT, NULL): Stack trace or error message.
+  - verdict_category (VARCHAR(32), NULL): Classification ('PRIME_LOW_RISK', 'MODERATE_MONITORED',
+                                          'HIGH_RISK_REJECT').
+  - recommendation (VARCHAR(32), NULL): Action recommendation ('APPROVED', 'MANUAL_REVIEW',
+                                        'REJECTED').
+  - failure_reason (TEXT, NULL): Stack trace or error message if status is 'FAILED'.
   - created_at (TIMESTAMP WITH TIME ZONE, DEFAULT NOW()): Creation timestamp.
   - completed_at (TIMESTAMP WITH TIME ZONE, NULL): Termination timestamp.
 
@@ -197,32 +211,50 @@ CLUSTER 2.5: WEB APPLICATION IDENTITY & EXECUTION TELEMETRY
   - message (TEXT, NOT NULL): Telemetry log message.
 
 
-3. EXTERNAL DATA ACQUISITION & OPEN-SOURCE SEARCH PIPELINE
+3. EXTERNAL DATA ACQUISITION & OPEN-SOURCE SEARCH PIPELINE (INGESTION SUBSYSTEM)
 --------------------------------------------------------------------------------
-The external search engine acts as an asynchronous enrichment pipeline that runs
-prior to submodule evaluation. It populates `web_reputation` and `macro_sector_metrics`.
+The External Data Acquisition Pipeline is physically owned by the ingestion subsystem
+(`src/fintech_app/ingestion/external_intel.py`, class `ExternalIntelligenceCollector`)
+and coordinated directly within `src/fintech_app/ingestion/pipeline.py` (`IngestionPipeline`).
+It runs as an asynchronous pre-evaluation enrichment step to populate the database tables
+`web_reputation` and `macro_sector_metrics` prior to ML evaluation.
 
-3.1 Pipeline Ingestion Workflow
-1. Identification Layer: The engine extracts the `tax_id` and `legal_name` of the
-   enterprise and initiates targeted workers.
-2. Judicial & State Registry Scraping:
-   - Worker queries national public court registries and debt-enforcement portals.
-   - Parses open litigation records via headless browser scraping or open REST APIs.
-   - Extracts: active defendant lawsuits count and aggregate monetary claims.
+3.1 Ingestion Boundary Rule: Gathering & Extraction Only
+The ingestion subsystem is strictly prohibited from executing analytical credit reasoning,
+adjusting submodule weights, or computing risk scores and underwriting verdicts. Its sole
+mandate is deterministic data acquisition, structured extraction, schema normalization,
+and atomic database persistence, ensuring PostgreSQL contains a complete financial and
+reputational graph for subsequent consumption by the ML analytical core.
+
+3.2 Data Acquisition Streams
+1. Identification Layer: Extracts target enterprise identifiers (`tax_id`, `legal_name`,
+   `industry_code`) from the ingestion request manifest.
+2. Judicial & Litigation Registries:
+   - Queries national court registries and enforcement agency portals.
+   - Extracts: active defendant lawsuits count (`active_lawsuits_count`) and aggregate
+     monetary claims (`total_lawsuit_claims_amount`).
 3. Sanctions & AML Watchlists:
    - Queries open AML, PEP, and international sanctions registries via fuzzy string
-     matching on entity and board member names.
+     matching on enterprise legal name and shareholder records.
    - Flags binary matches (`is_in_sanctions_list`).
-4. News & Digital Presence Scraping:
-   - Search workers query global and regional news syndications using search APIs
-     (`"{legal_name}" AND (court OR debt OR fraud OR expansion OR contract)`).
-   - Scraped text snippets and news articles pass through a distilled LLM/NLP
-     sentiment classification prompt.
-   - Returns a bounded float `news_sentiment_score` (-1.000 for highly negative,
-     0.000 for neutral, +1.000 for strongly positive).
-5. Macroeconomic Enrichment:
-   - Pulls current industry statistics from national bureaus and economic outlook
-     databases mapped directly to the company's `industry_code`.
+4. News Sentiment & Digital Presence:
+   - Scrapes public news feeds and press mentions using search APIs.
+   - Computes NLP sentiment score normalized to `[-1.000, 1.000]` (`news_sentiment_score`)
+     and monthly visitor volume estimate (`web_traffic_monthly_visits`).
+5. Macroeconomic Sector Enrichment:
+   - Pulls current industry benchmark metrics (GDP growth YoY, baseline default rates,
+     and sector risk outlook score) mapped by `industry_code`.
+
+3.3 Fail-Safe Mock Fallback & Offline Resilience
+When operating in offline environments, when `USE_MOCK_ENGINE=true`, or when any remote
+network lookup fails or exceeds the strict 2.5-second timeout threshold,
+`ExternalIntelligenceCollector` guarantees zero pipeline crashes by immediately injecting
+clean, deterministic neutral fallback records:
+- `web_reputation`: 0 active lawsuits, 0.00 lawsuit claims, negative sanctions flag
+  (`is_in_sanctions_list = False`), neutral sentiment score (`news_sentiment_score = 0.000`),
+  and null web traffic.
+- `macro_sector_metrics`: standard neutral sector baseline benchmarks (e.g. 2.5% YoY growth,
+  1.5% default rate, risk outlook score 5/10).
 
 
 4. CORE ANALYTICAL ENGINE: 9 DECOUPLED SUBMODULES
@@ -360,7 +392,8 @@ delayed payment from that buyer directly imperils the SME's solvency.
 
 Data Inputs:
 * counterparties (counterparty_id, counterparty_role == 'CLIENT')
-* invoices (counterparty_id, invoice_type == 'RECEIVABLE', gross_amount, status == 'PAID')
+* invoices (counterparty_id, invoice_type == 'RECEIVABLE', gross_amount,
+            status in ('SETTLED', 'PAID'))
   Evaluated over trailing 12 months.
 
 Algorithmic Steps:
@@ -399,8 +432,11 @@ shocks, pricing extortion, and sudden contractual margin compression.
 
 Data Inputs:
 * counterparties (counterparty_id, counterparty_role == 'SUPPLIER')
-* invoices (counterparty_id, invoice_type == 'PAYABLE', gross_amount, status == 'PAID')
-* transactions (counterparty_id, category == 'OPERATING_EXPENSE', amount, direction == 'OUTFLOW')
+* invoices (counterparty_id, invoice_type == 'PAYABLE', gross_amount,
+            status in ('SETTLED', 'PAID'))
+* transactions (counterparty_id,
+                category in ('SUPPLIER_PAYMENT', 'OPERATING_EXPENSE', 'OTHER'),
+                amount, direction == 'OUTFLOW')
   Evaluated over trailing 12 months.
 
 Algorithmic Steps:
@@ -482,7 +518,8 @@ High revenue volatility introduces unexpected debt servicing shortfalls during t
 months, requiring higher liquidity safety margins.
 
 Data Inputs:
-* transactions (amount, direction == 'INFLOW', category == 'REVENUE', timestamp)
+* transactions (amount, direction == 'INFLOW',
+                category in ('CLIENT_REVENUE', 'REVENUE'), timestamp)
   Evaluated across 12 monthly rolling buckets.
 
 Algorithmic Steps:
@@ -530,8 +567,8 @@ Data Inputs:
 
 Algorithmic Steps:
 1. Receivables Aging & Delinquency Exposure:
-   Total_Receivables = Sum(gross_amount WHERE status != 'PAID')
-   Delinquent_Receivables = Sum(gross_amount WHERE status IN ('OVERDUE', 'DEFAULTED'))
+   Total_Receivables = Sum(gross_amount WHERE status not in ('SETTLED', 'PAID'))
+   Delinquent_Receivables = Sum(gross_amount WHERE status in ('OVERDUE', 'DEFAULTED', 'DISPUTED'))
    Counterparty_Exposure_Ratio (CER) = Delinquent_Receivables / max(Total_Receivables, 1.0)
 2. Average Behavioral Payment Delay (Slippage):
    Delay_Days_i = max(0, actual_payment_date - due_date) for settled invoices.
@@ -575,8 +612,10 @@ Algorithmic Steps:
                  (historical_defaults_count * 50.0)
    DRDI = clamp(0.0, 100.0, 100.0 - DPD_Penalty)
 2. Debt Service Coverage Ratio (DSCR):
-   Annual_Inflows = Sum(amount WHERE direction == 'INFLOW' AND timestamp >= NOW() - INTERVAL '1 year')
-   Annual_OpEx = Sum(amount WHERE direction == 'OUTFLOW' AND category != 'DEBT_SERVICE' 
+   Annual_Inflows = Sum(amount WHERE direction == 'INFLOW' 
+                        AND timestamp >= NOW() - INTERVAL '1 year')
+   Annual_OpEx = Sum(amount WHERE direction == 'OUTFLOW' 
+                     AND category not in ('CREDIT_REPAYMENT', 'INTEREST_FEE', 'DEBT_SERVICE')
                      AND timestamp >= NOW() - INTERVAL '1 year')
    Operating_Cash_Flow = max(0.0, Annual_Inflows - Annual_OpEx)
    Annual_Debt_Service = Sum(monthly_payment * 12.0)
@@ -605,19 +644,36 @@ SUMMARY: Historical defaults: <historical_defaults_count>, 90-day DPD: <past_due
 5. EXECUTION LIFECYCLE, FEATURE VECTOR AGGREGATION & ML HAND-OFF
 --------------------------------------------------------------------------------
 
-5.1 Orchestration Workflow
-1. Request Reception: The engine receives an evaluation request targeting a `business_id`
-   and reference cutoff timestamp (supporting strict point-in-time underwriting discipline).
-2. Data Pre-Fetch & Cache: The engine extracts connected entities from PostgreSQL
-   (businesses, shareholders, web_reputation, counterparties, invoices, transactions,
-   credit_obligations).
-3. Concurrent Submodule Execution: Submodules 4.1 through 4.9 execute in parallel worker
-   threads. Each submodule runs pure mathematical evaluations on in-memory representations
-   of the retrieved records.
-4. Error Handling & Missing Data Isolation:
-   - If a table returns zero rows (e.g., no external web data found), the respective
-     submodule returns an explicit `STATUS: DATA_ABSENT` report and sets its indices to `NULL`.
-   - Remaining submodules continue unhindered.
+5.1 Orchestration Workflow (Decoupled Baton-Passing & Verification Gate)
+1. Request Reception: The API endpoint (`POST /api/v1/analysis/start`) registers a new
+   `analysis_runs` session with status `QUEUED`, writes uploaded files to disk, and delegates
+   execution to an asynchronous background worker.
+2. Phase 1 (Data Ingestion & Open-Source Enrichment):
+   - Background worker transitions run status to `PARSING` and emits telemetry to `analysis_logs`.
+   - Invokes `IngestionPipeline(db).run(metadata, files)`, coordinating `BankStatementParser`,
+     `TransactionCategorizationMapper`, and `ExternalIntelligenceCollector`.
+   - Persists business profiles, counterparties, invoices, transactions, bank accounts,
+     `web_reputation`, and `macro_sector_metrics` into PostgreSQL via DAL.
+3. Verification Gate:
+   - Worker inspects returned `IngestionResult`.
+   - Gate Check: If `not ingestion_res.success`, worker sets `analysis_runs.status = 'FAILED'`
+     with `failure_reason`, logs the error, and halts execution immediately (ML is never invoked).
+4. Phase 2 (Analytical Evaluation & Scoring):
+   - Upon successful ingestion verification, worker transitions status to `PROCESSING` and
+     awaits `UnderwritingAnalyticalPipeline(db).run_analysis_from_db(run_id, business_id)`.
+   - Context Assembly: `CompanyDataLoader` (`src/fintech_app/ml/loader.py`) asynchronously
+     extracts all 9 financial slices via DAL and constructs typed `CompanyDataSnapshot`.
+5. Concurrent Submodule Execution:
+   - Submodules 4.1 through 4.9 execute concurrently over the in-memory `CompanyDataSnapshot`.
+   - If records are missing for optional domains, respective submodules return `STATUS: DATA_ABSENT`
+     with null indices, allowing remaining submodules to continue unhindered.
+6. Scoring, Verdict Determination & Persistence:
+   - `CreditScoringEngine.calculate_score(...)` derives composite score, default probability (PD),
+     `verdict_category`, `recommendation`, and generates LLM synthesis prompt.
+   - Status is determined: `COMPLETED` if all 9 submodules succeed, or `DEGRADED` if any submodule
+     is bypassed due to data absence.
+   - Sanitized results (`raw_indices_payload` stripped of `NaN`, `submodules_reports`, verdicts,
+     `universal_score`, and `completed_at`) are atomically updated in `analysis_runs`.
 
 5.2 Feature Vector Aggregation Schema
 The analytical core concatenates the output scores into a standardized 18-element
@@ -678,80 +734,87 @@ evaluating with missing underlying records.
 Enums representing fixed domain states across all application boundaries (Python 3.12 `StrEnum`):
 
 * Enum: EvaluationStatus
-* SUCCESS: Submodule calculation completed normally.
-* DATA_ABSENT: Required records missing; indices safely defaulted to null.
-* ERROR: Operational or parsing failure during evaluation.
+  * SUCCESS: Submodule calculation completed normally.
+  * DATA_ABSENT: Required records missing; indices safely defaulted to null.
+  * ERROR: Operational or parsing failure during evaluation.
 
 * Enum: CounterpartyRole
-* CLIENT, SUPPLIER, MIXED
+  * CLIENT, SUPPLIER, MIXED, BOTH
 
 * Enum: InvoiceType
-* RECEIVABLE, PAYABLE
+  * RECEIVABLE, PAYABLE
 
 * Enum: InvoiceStatus
-* PAID, OUTSTANDING, OVERDUE, DEFAULTED
+  * PAID, SETTLED, OUTSTANDING, OVERDUE, DEFAULTED, DISPUTED
 
 * Enum: TransactionDirection
-* INFLOW, OUTFLOW
+  * INFLOW, OUTFLOW
 
 * Enum: TransactionCategory
-* REVENUE, OPERATING_EXPENSE, PAYROLL, TAX, DEBT_SERVICE, DIVIDEND, OTHER
+  * REVENUE, CLIENT_REVENUE, OPERATING_EXPENSE, SUPPLIER_PAYMENT, PAYROLL, TAX,
+    DEBT_SERVICE, CREDIT_REPAYMENT, INTEREST_FEE, DIVIDEND, OTHER
 
 * Enum: LiquidityClass
-* IMMEDIATE_CASH, RESTRICTED_ESCROW, TERM_DEPOSIT
+  * IMMEDIATE_CASH, SHORT_TERM_RECEIVABLE, RESTRICTED_ESCROW, TERM_DEPOSIT, TIED_CAPITAL
 
 * Enum: FacilityType
-* TERM_LOAN, LEASING, LINE_OF_CREDIT
+  * TERM_LOAN, CREDIT_LINE, LINE_OF_CREDIT, OVERDRAFT, LEASING, FACTORING
+  * (Aliased as `CreditFacilityType` for domain parity)
 
 * Enum: AnalysisStatus
-* QUEUED, PARSING, PROCESSING, COMPLETED, FAILED, DEGRADED
+  * QUEUED, PARSING, PROCESSING, COMPLETED, FAILED, DEGRADED
 
 
 ---
 
 ## 6.2 INGESTION & NORMALIZATION BOUNDARY (src/fintech_app/ingestion/)
 
-This layer accepts unstructured or semi-structured bank statements, judicial extracts,
-and registries, returning strictly typed normalized DTOs ready for DB insertion.
+This layer accepts unstructured bank statements, invoices, and open-source intelligence feeds,
+returning strictly typed normalized DTOs ready for atomic PostgreSQL insertion via DAL.
 
 ## FILE: src/fintech_app/ingestion/schemas.py
 
 Terminal Pydantic DTOs for parsed external feeds:
 
 * Class: RawBankStatementLine
-* date: datetime.date
-* amount: Decimal
-* direction: TransactionDirection
-* description: str
-* counterparty_raw_name: Optional[str]
-* counterparty_tax_id: Optional[str]
-* account_number: str
-* currency: str
-
+  * date: datetime.date
+  * amount: Decimal
+  * direction: TransactionDirection
+  * description: str
+  * counterparty_raw_name: Optional[str]
+  * counterparty_tax_id: Optional[str]
+  * account_number: str
+  * currency: str
 
 * Class: ParsedBankStatementPayload
-* account_id: UUID
-* business_id: UUID
-* opening_balance: Decimal
-* closing_balance: Decimal
-* period_start: datetime.date
-* period_end: datetime.date
-* lines: List[RawBankStatementLine]
-
+  * account_id: UUID
+  * business_id: UUID
+  * opening_balance: Decimal
+  * closing_balance: Decimal
+  * period_start: datetime.date
+  * period_end: datetime.date
+  * lines: List[RawBankStatementLine]
 
 * Class: ParsedJudicialRecord
-* case_number: str
-* filing_date: datetime.date
-* role: str  # DEFENDANT, PLAINTIFF, THIRD_PARTY
-* claim_amount: Decimal
-* case_status: str  # OPEN, CLOSED, APPEALED
-
+  * case_number: str
+  * filing_date: datetime.date
+  * role: str  # DEFENDANT, PLAINTIFF, THIRD_PARTY
+  * claim_amount: Decimal
+  * case_status: str  # OPEN, CLOSED, APPEALED
 
 * Class: StandardizedTransactionBatch
-* business_id: UUID
-* account_id: UUID
-* transactions: List[Dict[str, Any]] # Pre-mapped fields for DB insertion
+  * business_id: UUID
+  * account_id: UUID
+  * transactions: List[Dict[str, Any]] # Pre-mapped fields for DB insertion
 
+* Class: IngestionResult
+  * success: bool
+  * business_id: Optional[UUID] = None
+  * records_ingested: int = 0
+  * external_data_acquired: bool = False
+  * warnings: List[str] = Field(default_factory=list)
+  * error: Optional[str] = None
+  * message: str = ""
 
 
 ## FILE: src/fintech_app/ingestion/parser.py
@@ -759,15 +822,15 @@ Terminal Pydantic DTOs for parsed external feeds:
 Terminal parser classes extracting structured records from file bytes:
 
 * Class: BankStatementParser
-Terminal Methods:
-* parse_csv(file_content: bytes, account_id: UUID, business_id: UUID) -> ParsedBankStatementPayload
-* parse_pdf(file_content: bytes, account_id: UUID, business_id: UUID) -> ParsedBankStatementPayload
-
+  Terminal Methods:
+  * parse_csv(file_content: bytes, account_id: UUID,
+              business_id: UUID) -> ParsedBankStatementPayload
+  * parse_pdf(file_content: bytes, account_id: UUID,
+              business_id: UUID) -> ParsedBankStatementPayload
 
 * Class: JudicialRegistryParser
-Terminal Methods:
-* parse_court_registry_response(raw_response: dict) -> List[ParsedJudicialRecord]
-
+  Terminal Methods:
+  * parse_court_registry_response(raw_response: dict) -> List[ParsedJudicialRecord]
 
 
 ## FILE: src/fintech_app/ingestion/ai_mapper.py
@@ -775,20 +838,45 @@ Terminal Methods:
 Semantic classification and category assignment for raw bank lines:
 
 * Class: TransactionCategorizationMapper
-Terminal Methods:
-* map_categories_and_counterparties(payload: ParsedBankStatementPayload) -> StandardizedTransactionBatch
-Transforms unstructured transaction descriptions into standard TransactionCategory
-enums and links or creates Counterparty entities.
+  Terminal Methods:
+  * map_categories_and_counterparties(
+      payload: ParsedBankStatementPayload) -> StandardizedTransactionBatch
+  Transforms unstructured transaction descriptions into standard TransactionCategory
+  enums and links or creates Counterparty entities.
 
+
+## FILE: src/fintech_app/ingestion/external_intel.py
+
+Open-source and registry intelligence collection engine:
+
+* Class: ExternalIntelligenceCollector
+  Terminal Methods:
+  * async collect_reputation(business_id: UUID, legal_name: str, tax_id: str) -> dict
+  * async collect_macro_metrics(industry_code: str) -> dict
+  * async collect_all(metadata: dict) -> dict
+  Executes targeted lookups for active lawsuits, claims, sanctions flags, news sentiment,
+  and sector benchmarks. When offline, in mock mode, or on timeout (>2.5s), injects safe,
+  deterministic neutral fallback records.
+
+
+## FILE: src/fintech_app/ingestion/pipeline.py
+
+Ingestion coordinator orchestrating parsing, external enrichment, and DAL persistence:
+
+* Class: IngestionPipeline
+  Terminal Methods:
+  * async run(metadata: dict, files: list) -> IngestionResult
+  Executes file parsing and external intelligence gathering, persisting all records to
+  PostgreSQL via DAL. Enforces the ingestion boundary rule: zero credit scoring.
 
 
 ---
 
-## 6.3 DATA ACCESS & EVALUATION SNAPSHOT LAYER (src/fintech_app/db/)
+## 6.3 DATA ACCESS & EVALUATION SNAPSHOT LAYER (src/fintech_app/db/ & ml/)
 
-The analytical core must never execute ad-hoc SQL queries inside mathematical submodules.
+The analytical core never executes ad-hoc SQL queries inside mathematical submodules.
 All data persistence and access executes asynchronously via `psycopg_pool.AsyncConnectionPool`
-and the `Database` class (`db/connection.py`), returning standardized `DatabaseReport` objects.
+and the `Database` class (`src/fintech_app/db/connection.py`), returning `DatabaseReport`.
 
 ## FILE: src/fintech_app/db/models.py
 
@@ -805,32 +893,36 @@ Pure Python Dataclasses mapping strictly to Section 2 Database Tables:
 * CreditObligationRecord
 * UserRecord
 * UserSettingsRecord
-* AnalysisRunRecord
+* AnalysisRunRecord (includes `verdict_category` and `recommendation`)
 * AnalysisLogRecord
-
-## FILE: src/fintech_app/db/connection.py & Repository Interface
+* DatabaseReport(success: bool, data: Any, affected_rows: int, error: Optional[str])
 
 * Class: CompanyDataSnapshot (Pure In-Memory Evaluation Context)
-Attributes:
-* business_id: UUID
-* as_of_date: datetime.date
-* business: BusinessRecord
-* shareholders: List[ShareholderRecord]
-* web_reputation: Optional[WebReputationRecord]
-* macro_metrics: Optional[MacroSectorMetricRecord]
-* counterparties: List[CounterpartyRecord]
-* invoices: List[InvoiceRecord]
-* bank_accounts: List[BankAccountRecord]
-* transactions: List[TransactionRecord]
-* credit_obligations: List[CreditObligationRecord]
+  Attributes:
+  * business_id: Optional[UUID]
+  * as_of_date: Optional[datetime.date]
+  * business: BusinessRecord
+  * shareholders: List[ShareholderRecord]
+  * web_reputation: Optional[WebReputationRecord]
+  * macro_sector_metrics: Optional[MacroSectorMetricRecord]
+  * counterparties: List[CounterpartyRecord]
+  * invoices: List[InvoiceRecord]
+  * bank_accounts: List[BankAccountRecord]
+  * transactions: List[TransactionRecord]
+  * credit_obligations: List[CreditObligationRecord]
+  * `@property def macro_metrics`: Backwards-compatibility alias for `macro_sector_metrics`
 
 
-* Class: CompanyEvaluationRepository
-Terminal Methods:
-* async get_evaluation_snapshot(business_id: UUID, as_of_date: datetime.date) -> CompanyDataSnapshot
-Queries all connected relational clusters via `Database` methods and constructs
-the immutable snapshot.
-* async persist_underwriting_result(run_id: UUID, dossier: Dict[str, Any]) -> DatabaseReport
+## FILE: src/fintech_app/ml/loader.py (Financial Graph Loader)
+
+Asynchronous data loader querying the 57-method Database DAL:
+
+* Class: CompanyDataLoader
+  Terminal Methods:
+  * async load_snapshot(business_id: UUID, as_of_date: Optional[date] = None) -> CompanyDataSnapshot
+  Concurrently loads connected relational entities across all 9 financial slices from
+  PostgreSQL using `Database` CRUD facades, applies robust type coercion and value
+  normalization, and constructs the strongly typed `CompanyDataSnapshot`.
 
 
 
@@ -887,7 +979,8 @@ Flat Submodule Evaluator Files & Classes:
 
 * FILE: `src/fintech_app/ml/submodule_credit_discipline.py`
   Class: `CreditDisciplineLeverageEvaluator` (Submodule 4.9: ICDL)
-  Indices: `Debt_Repayment_Discipline_Index`, `Debt_Service_Coverage_Index`, `Solvency_Leverage_Index`
+  Indices: `Debt_Repayment_Discipline_Index`, `Debt_Service_Coverage_Index`,
+           `Solvency_Leverage_Index`
 
 
 
@@ -902,33 +995,49 @@ Orchestrates concurrent execution of all 9 submodules and compiles the 18-elemen
 * Class: UnderwritingPipelineResult
 * business_id: UUID
 * as_of_date: datetime.date
-* feature_vector: List[Optional[float]]  # Exactly 18 items in canonical order specified in Section 5.2
+* feature_vector: List[Optional[float]]  # Exactly 18 items in canonical order
 * submodule_results: Dict[str, SubmoduleResult]
 * compiled_dossier_text: str
+* scoring_result: Optional[CreditScoringResult] = None
 
 
 * Class: UnderwritingAnalyticalPipeline
 Terminal Methods:
-* run_analysis(snapshot: CompanyDataSnapshot, as_of_date: Optional[date] = None) -> UnderwritingPipelineResult
+* run_analysis(snapshot: CompanyDataSnapshot,
+               as_of_date: Optional[date] = None) -> UnderwritingPipelineResult
+* async run_analysis_from_db(
+    db: Database, business_id: UUID,
+    as_of_date: Optional[date] = None,
+    run_id: Optional[UUID] = None) -> UnderwritingPipelineResult
+Loads `CompanyDataSnapshot` via `CompanyDataLoader`, executes all 9 submodules concurrently,
+computes investment attractiveness scoring, sanitizes payload (removing `NaN` and `np.float64`),
+assigns `COMPLETED` or `DEGRADED` lifecycle status, and atomically persists reports, scores,
+and verdicts into `analysis_runs` with real-time SSE telemetry in `analysis_logs`.
 
 
 
 ## FILE: src/fintech_app/ml/scoring.py
 
-Executes decision scoring and LLM synthesis on the feature vector.
+Executes decision scoring, dynamic weight renormalization, and LLM synthesis on the feature vector:
 
 * Class: CreditScoringResult
 * investment_attractiveness_score: float  # [0.0 to 100.0]
-* probability_of_default: float  # [0.000 to 1.000]
+* universal_score: float  # Alias property for investment_attractiveness_score
+* probability_of_default: float  # [0.001 to 0.999]
 * verdict_category: str  # PRIME_LOW_RISK, MODERATE_MONITORED, HIGH_RISK_REJECT
 * recommendation: str  # APPROVED, MANUAL_REVIEW, REJECTED
-* shap_attributions: Dict[str, float]  # Metric name -> impact on score
+* shap_attributions: Dict[str, float]  # Metric name -> impact on score relative to 50.0
 * executive_summary: str
+* llm_synthesis_prompt: str
 
 
 * Class: CreditScoringEngine
 Terminal Methods:
-* calculate_score(feature_vector: List[Optional[float]], compiled_dossier_text: str = "") -> CreditScoringResult
+* calculate_score(feature_vector: List[Optional[float]],
+                  compiled_dossier_text: str = "") -> CreditScoringResult
+Applies dynamic weight renormalization across active submodules, computes composite
+attractiveness score and default probability via logistic modeling, derives factor
+attributions, and constructs synthesis prompts for LLM memorandum generation.
 
 
 
@@ -943,7 +1052,8 @@ These request and response DTOs govern the FastAPI routing layer.
 Endpoints:
 
 * POST /api/v1/analysis/start
-Accepts multipart form with enterprise metadata and package of CSV files, creates `analysis_runs` record in DB, and initializes background pipeline.
+Accepts multipart form with enterprise metadata and package of CSV files, creates
+`analysis_runs` record in DB, and initializes background pipeline.
 Request:
 * input_company_name: str (form field)
 * input_tax_id: str (form field)
@@ -957,12 +1067,14 @@ Response DTO: AnalysisStartResponse
 
 
 * GET /api/v1/analysis/stream/{run_id}
-Streams live execution telemetry logs and stage transition events in real time via Server-Sent Events (SSE).
+Streams live execution telemetry logs and stage transition events in real time
+via Server-Sent Events (SSE).
 Media Type: `text/event-stream`
 
 
 * GET /api/v1/analysis/report/{run_id}
-Returns complete Underwriting Diagnostic Dossier including universal score, 18 indices, 9 submodule reports, and LLM summary.
+Returns complete Underwriting Diagnostic Dossier including universal score, 18 indices,
+9 submodule reports, and LLM summary.
 Response DTO: AnalysisReportResponse
 * run_id: UUID
 * company_name: str
