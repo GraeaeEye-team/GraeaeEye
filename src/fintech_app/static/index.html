@@ -4,22 +4,22 @@
 	<title>GraeaeEye</title>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<style></style>
+	<link rel="stylesheet" href="/static/styles.css">
+	<script src="/static/scripts.js"></script>
 	<script>
 		function upd_status() {
-			var xmlHttp = new XMLHttpRequest();
-			xmlHttp.open( "GET", "/health", false );
-			xmlHttp.send( null );
 			var x = document.getElementById("status");
-			x.innerHTML = xmlHttp.responseText;
+			fetch("/health")
+				.then((response) => response.json())
+				.then((json) => x.innerHTML = json.status == "ok" ? json.service + " is ok" : "Internal error!" );
 		}
-		document.addEventListener('DOMContentLoaded', function() {
-			upd_status();
-		}, false);
+		/* document.addEventListener('DOMContentLoaded', function() { upd_status(); }, false); */
 	</script>
 </head>
 <body>
-	<center><h1>Hello, World!</h1></center>
-	<button onclick="upd_status">health:</button><span id="status"></span>
+	<center class="splash"><h1>GraeaeEye SPA</h1></center>
+	<div id="main">
+		<button onclick="upd_status()">health:</button><span id="status"></span>
+	</div>
 </body>
 </html>
