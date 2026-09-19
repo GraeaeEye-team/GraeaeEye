@@ -4,14 +4,12 @@
 	<title>GraeaeEye</title>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
-	<style></style>
+	<link rel="stylesheet" href="/static/styles.css">
+	<script src="/static/scripts.js"></script>
 	<script>
 		function upd_status() {
-			var xmlHttp = new XMLHttpRequest();
-			xmlHttp.open( "GET", "/health", false );
-			xmlHttp.send( null );
 			var x = document.getElementById("status");
-			x.innerHTML = xmlHttp.responseText;
+			x.innerHTML = get("/health").responseText;
 		}
 		/* document.addEventListener('DOMContentLoaded', function() { upd_status(); }, false); */
 	</script>

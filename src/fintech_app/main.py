@@ -14,7 +14,7 @@ app = FastAPI(
     version="0.1.4",
 )
 
-app.include_router(api_router, prefix="/api")
+app.include_router(api_router)
 
 @app.get("/health", tags=["Health Check"])
 async def health_check():
