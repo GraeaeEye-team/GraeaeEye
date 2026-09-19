@@ -428,4 +428,3 @@ class CompanyDataSnapshot:
     def macro_metrics(self, value: Optional[MacroSectorMetricRecord]) -> None:
         self.macro_sector_metrics = value
 
-
