@@ -77,7 +77,7 @@ Root Directory Level:
 - `requirements.txt`: Locked third-party Python package dependencies.
 - `pyproject.toml`: Modern Python project build and metadata configuration.
 - `.env.example`: Environment variable template for local development and CI/CD.
-- `.gitignore`: Version control exclusion rules for Python caches, virtual environments, and storage.
+- `.gitignore`: Version control exclusion rules for caches, venv, and storage.
 
 Package Directory (`src/fintech_app/`):
 - `src/fintech_app/__init__.py`: Package root marker.
@@ -85,46 +85,73 @@ Package Directory (`src/fintech_app/`):
 
 Core Subsystem (`src/fintech_app/core/`):
 - `src/fintech_app/core/__init__.py`: Core package marker.
-- `src/fintech_app/core/config.py`: Centralized configuration manager using environment variables.
-- `src/fintech_app/core/exceptions.py`: Custom exception class hierarchy (`GraeaeEyeException` root).
-- `src/fintech_app/core/logger.py`: Centralized logging setup (`logger` instance with standard output handler).
+- `src/fintech_app/core/config.py`: Centralized configuration manager using env variables.
+- `src/fintech_app/core/exceptions.py`: Custom exception hierarchy (`GraeaeEyeException`).
+- `src/fintech_app/core/logger.py`: Centralized logging setup (`logger` instance).
 
 Database & Relational Model Subsystem (`src/fintech_app/db/`):
 - `src/fintech_app/db/__init__.py`: Database package marker.
-- `src/fintech_app/db/connection.py`: Database connection pool wrapper (`Database` class via `psycopg_pool.AsyncConnectionPool`).
-- `src/fintech_app/db/models.py`: Data record dataclasses (`BusinessRecord`, `ShareholderRecord`, `WebReputationRecord`, `CounterpartyRecord`, `InvoiceRecord`, `TransactionRecord`, `CreditObligationRecord`, `UserRecord`, `AnalysisRunRecord`, `AnalysisLogRecord`) and `DatabaseReport`.
+- `src/fintech_app/db/connection.py`: Database connection pool wrapper (`Database` class
+  via `psycopg_pool.AsyncConnectionPool` with 57 async DAL methods).
+- `src/fintech_app/db/models.py`: Data record dataclasses (`BusinessRecord`,
+  `ShareholderRecord`, `WebReputationRecord`, `CounterpartyRecord`, `InvoiceRecord`,
+  `TransactionRecord`, `CreditObligationRecord`, `UserRecord`, `AnalysisRunRecord`,
+  `AnalysisLogRecord`, `CompanyDataSnapshot`) and `DatabaseReport(error: Optional[str])`.
 
 Data Ingestion & Parser Subsystem (`src/fintech_app/ingestion/`):
 - `src/fintech_app/ingestion/__init__.py`: Ingestion package marker.
 - `src/fintech_app/ingestion/parser.py`: File loader utilities (`BankStatementParser`).
-- `src/fintech_app/ingestion/ai_mapper.py`: Contextual column mapping logic (`TransactionCategorizationMapper`).
-- `src/fintech_app/ingestion/schemas.py`: Pydantic validation schemas (`ParsedBankStatementPayload`).
+- `src/fintech_app/ingestion/ai_mapper.py`: Contextual column mapping logic
+  (`TransactionCategorizationMapper`).
+- `src/fintech_app/ingestion/external_intel.py`: External intelligence gathering
+  (`ExternalIntelligenceCollector`).
+- `src/fintech_app/ingestion/pipeline.py`: Decoupled ingestion orchestrator
+  (`IngestionPipeline`).
+- `src/fintech_app/ingestion/schemas.py`: Pydantic validation schemas
+  (`ParsedBankStatementPayload`, `IngestionResult`).
 
 Predictive Machine Learning Engine Subsystem (`src/fintech_app/ml/`):
 - `src/fintech_app/ml/__init__.py`: ML package marker.
-- `src/fintech_app/ml/submodule_ownership.py`: Ownership Structure Evaluator (`OwnershipStructureEvaluator`).
-- `src/fintech_app/ml/submodule_reputation.py`: Web Reputation Evaluator (`WebReputationEvaluator`).
-- `src/fintech_app/ml/submodule_macro.py`: Macro & Sector Risk Evaluator (`MacroSectorRiskEvaluator`).
-- `src/fintech_app/ml/submodule_client_dep.py`: Client Dependency Evaluator (`ClientDependencyEvaluator`).
-- `src/fintech_app/ml/submodule_supplier_dep.py`: Supplier Dependency Evaluator (`SupplierDependencyEvaluator`).
-- `src/fintech_app/ml/submodule_cash_readiness.py`: Immediate Cash Readiness Evaluator (`ImmediateCashReadinessEvaluator`).
-- `src/fintech_app/ml/submodule_cash_stability.py`: Cash Flow Stability Evaluator (`CashflowStabilityEvaluator`).
-- `src/fintech_app/ml/submodule_receivables.py`: Receivables Quality Evaluator (`ReceivablesQualityEvaluator`).
-- `src/fintech_app/ml/submodule_credit_discipline.py`: Internal Credit Discipline & Leverage Evaluator (`CreditDisciplineLeverageEvaluator`).
-- `src/fintech_app/ml/pipeline.py`: Master pipeline orchestrator (`UnderwritingAnalyticalPipeline`).
-- `src/fintech_app/ml/scoring.py`: Underwriting credit scoring engine (`CreditScoringEngine`).
+- `src/fintech_app/ml/loader.py`: Asynchronous financial snapshot data loader
+  (`CompanyDataLoader`).
+- `src/fintech_app/ml/submodule_ownership.py`: Ownership Structure Evaluator
+  (`OwnershipStructureEvaluator`).
+- `src/fintech_app/ml/submodule_reputation.py`: Web Reputation Evaluator
+  (`WebReputationEvaluator`).
+- `src/fintech_app/ml/submodule_macro.py`: Macro & Sector Risk Evaluator
+  (`MacroSectorRiskEvaluator`).
+- `src/fintech_app/ml/submodule_client_dep.py`: Client Dependency Evaluator
+  (`ClientDependencyEvaluator`).
+- `src/fintech_app/ml/submodule_supplier_dep.py`: Supplier Dependency Evaluator
+  (`SupplierDependencyEvaluator`).
+- `src/fintech_app/ml/submodule_cash_readiness.py`: Immediate Cash Readiness Evaluator
+  (`ImmediateCashReadinessEvaluator`).
+- `src/fintech_app/ml/submodule_cash_stability.py`: Cash Flow Stability Evaluator
+  (`CashflowStabilityEvaluator`).
+- `src/fintech_app/ml/submodule_receivables.py`: Receivables Quality Evaluator
+  (`ReceivablesQualityEvaluator`).
+- `src/fintech_app/ml/submodule_credit_discipline.py`: Internal Credit Discipline &
+  Leverage Evaluator (`CreditDisciplineLeverageEvaluator`).
+- `src/fintech_app/ml/pipeline.py`: Master pipeline orchestrator
+  (`UnderwritingAnalyticalPipeline`).
+- `src/fintech_app/ml/scoring.py`: Underwriting credit scoring engine
+  (`CreditScoringEngine`).
 
 API Layer & Endpoints (`src/fintech_app/api/`):
 - `src/fintech_app/api/__init__.py`: API package marker.
 - `src/fintech_app/api/router.py`: API v1 main router registering endpoint sub-routers.
-- `src/fintech_app/api/dependencies.py`: FastAPI dependency injection helpers (`get_db_connection`).
+- `src/fintech_app/api/dependencies.py`: FastAPI dependency injection helpers
+  (`get_db_connection`).
 - `src/fintech_app/api/endpoints/__init__.py`: Endpoints package marker.
-- `src/fintech_app/api/endpoints/analysis.py`: Session lifecycle endpoints (`/api/v1/analysis/start`, `/stream/{run_id}`, `/report/{run_id}`).
+- `src/fintech_app/api/endpoints/analysis.py`: Session lifecycle endpoints
+  (`/api/v1/analysis/start`, `/stream/{run_id}`, `/report/{run_id}`).
 
 Shared Utilities & Domain Types (`src/fintech_app/shared/`):
 - `src/fintech_app/shared/__init__.py`: Shared package marker.
 - `src/fintech_app/shared/schemas/__init__.py`: Shared schemas marker.
-- `src/fintech_app/shared/schemas/user_types.py`: Domain enums (`CounterpartyRole`, `InvoiceType`, `InvoiceStatus`, `TransactionDirection`, `TransactionCategory`, `LiquidityClass`, `FacilityType`, `AnalysisStatus`, `EvaluationStatus`).
+- `src/fintech_app/shared/schemas/user_types.py`: Domain enums (`CounterpartyRole`,
+  `InvoiceType`, `InvoiceStatus`, `TransactionDirection`, `TransactionCategory`,
+  `LiquidityClass`, `FacilityType`, `AnalysisStatus`, `EvaluationStatus`).
 - `src/fintech_app/shared/utils.py`: Common helpers (`format_currency`).
 
 
@@ -175,8 +202,8 @@ Cluster 2.1.1: Core Infrastructure & Operations
 - Location: `src/fintech_app/core/`
 - Responsibility: Centralizes system initialization, environment variable management,
   logging setup, and application-wide exception handling.
-- Key Entities: `Settings` dataclass (`config.py`), `GraeaeEyeException` hierarchy (`exceptions.py`),
-  `logger` (`logger.py`).
+- Key Entities: `Settings` dataclass (`config.py`), `GraeaeEyeException` hierarchy
+  (`exceptions.py`), `logger` (`logger.py`).
 
 Cluster 2.1.2: Relational Data Graph & Storage
 - Location: `src/fintech_app/db/`
@@ -184,28 +211,31 @@ Cluster 2.1.2: Relational Data Graph & Storage
   connection lifecycle, and defines table dataclasses.
 - Key Entities: `Database` (`connection.py`), `DatabaseReport`, `BusinessRecord`,
   `ShareholderRecord`, `CounterpartyRecord`, `InvoiceRecord`, `TransactionRecord`,
-  `CreditObligationRecord`, `AnalysisRunRecord`, `AnalysisLogRecord` (`models.py`).
+  `CreditObligationRecord`, `AnalysisRunRecord`, `AnalysisLogRecord`,
+  `CompanyDataSnapshot` (`models.py`).
 
 Cluster 2.1.3: Intelligent Data Ingestion
 - Location: `src/fintech_app/ingestion/`
-- Responsibility: Ingests unstructured CSV/Excel bank statements, uses fuzzy string matching
-  to normalize column headers, and validates records before DB write.
-- Key Entities: `BankStatementParser` (`parser.py`), `TransactionCategorizationMapper` (`ai_mapper.py`),
-  `ParsedBankStatementPayload` (`schemas.py`).
+- Responsibility: Ingests CSV bank statements, extracts transactions, queries external
+  registries (tax, court, reputation) with fallback, and writes to database.
+- Key Entities: `BankStatementParser` (`parser.py`), `TransactionCategorizationMapper`
+  (`ai_mapper.py`), `ExternalIntelligenceCollector` (`external_intel.py`),
+  `IngestionPipeline` (`pipeline.py`), `ParsedBankStatementPayload` (`schemas.py`).
 
 Cluster 2.1.4: Core Analytical Submodule Engine
 - Location: `src/fintech_app/ml/`
-- Responsibility: Runs 9 autonomous submodules, aggregates the 18-element feature vector,
-  calculates credit score, and synthesizes LLM reports.
-- Key Entities: 9 Submodule Evaluators (`submodule_*.py`), `UnderwritingAnalyticalPipeline` (`pipeline.py`),
+- Responsibility: Hydrates financial snapshot, runs 9 autonomous submodules, compiles
+  the 18-element feature vector, calculates credit score, and synthesizes reports.
+- Key Entities: `CompanyDataLoader` (`loader.py`), 9 Submodule Evaluators
+  (`submodule_*.py`), `UnderwritingAnalyticalPipeline` (`pipeline.py`),
   `CreditScoringEngine` (`scoring.py`).
 
 Cluster 2.1.5: REST API Controller & Service Layer
 - Location: `src/fintech_app/api/` & `src/fintech_app/main.py`
 - Responsibility: Exposes FastAPI endpoints for external web consumption, handles request
   validation, triggers background execution, and streams real-time SSE logs.
-- Key Entities: `app` (`main.py`), `api_router` (`router.py`), `get_db_connection` (`dependencies.py`),
-  analysis session handlers (`analysis.py`).
+- Key Entities: `app` (`main.py`), `api_router` (`router.py`), `get_db_connection`
+  (`dependencies.py`), analysis session handlers (`analysis.py`).
 
 Cluster 2.1.6: Shared Domain Utilities & Enums
 - Location: `src/fintech_app/shared/`
@@ -239,12 +269,18 @@ class DatabaseReport:
 ```
 
 3.1.1 Operational Semantics:
-- `success`: `True` if query/transaction completed cleanly without database errors; `False` on exception or constraint violation.
-- `data`: On `success` with query results, contains a `dict` (single row) or `List[dict]` (multiple rows). On `error` or non-SELECT operations, set to `None`.
-- `affected_rows`: Integer count of rows inserted, updated, deleted, or retrieved. `0` if no rows affected or on error.
-- `error`: `None` on success. On failure, contains descriptive string detailing the SQL error or exception traceback.
-- `operation`: String tag denoting query type (e.g., `'INSERT'`, `'UPDATE'`, `'SELECT'`, `'DELETE'`). `None` if unassigned.
-- `table_name`: Target database table name (e.g., `'transactions'`, `'businesses'`). `None` if unassigned.
+- `success`: `True` if query/transaction completed cleanly without database errors;
+  `False` on exception or constraint violation.
+- `data`: On `success` with query results, contains a `dict` (single row) or `List[dict]`
+  (multiple rows). On `error` or non-SELECT operations, set to `None`.
+- `affected_rows`: Integer count of rows inserted, updated, deleted, or retrieved.
+  `0` if no rows affected or on error.
+- `error`: `None` on success. On failure, contains descriptive string detailing the SQL
+  error or exception traceback.
+- `operation`: String tag denoting query type (e.g., `'INSERT'`, `'UPDATE'`, `'SELECT'`,
+  `'DELETE'`). `None` if unassigned.
+- `table_name`: Target database table name (e.g., `'transactions'`, `'businesses'`).
+  `None` if unassigned.
 
 3.2 Ingestion Data Validation Contract (`RawBankStatementLine`)
 Defined in: `src/fintech_app/ingestion/schemas.py`
@@ -270,7 +306,8 @@ class RawBankStatementLine(BaseModel):
 - `date`: Required `date` object representing payment date.
 - `amount`: Required `Decimal` monetary value (fixed point 18,2).
 - `direction`: Required string indicating `INFLOW` or `OUTFLOW`.
-- `counterparty_tax_id`: Optional string representing National Tax Identification Number (tax_id). Set to `None` if omitted.
+- `counterparty_tax_id`: Optional string representing National Tax Identification
+  Number (tax_id). Set to `None` if omitted.
 - `description`: String payment memo. Defaults to `""` if not provided in statement.
 
 3.3 Core Configuration Contract (`Settings`)
@@ -285,6 +322,9 @@ import os
 class Settings:
     app_env: str = os.getenv("APP_ENV", "development")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    use_mock_engine: bool = (
+        os.getenv("USE_MOCK_ENGINE", "false").lower() in ("true", "1", "yes")
+    )
 
     postgres_server: str = os.getenv("POSTGRES_SERVER", "localhost")
     postgres_port: int = int(os.getenv("POSTGRES_PORT", "5432"))
@@ -293,10 +333,17 @@ class Settings:
     postgres_db: str = os.getenv("POSTGRES_DB", "graeae_eye_db")
 
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
+    ollama_host: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 
     @property
     def database_url(self) -> str:
-        return f"postgresql://{self.postgres_user}:{self.postgres_password}@{self.postgres_server}:{self.postgres_port}/{self.postgres_db}"
+        user = self.postgres_user
+        pwd = self.postgres_password
+        host = self.postgres_server
+        port = self.postgres_port
+        db = self.postgres_db
+        return f"postgresql://{user}:{pwd}@{host}:{port}/{db}"
 ```
 
 3.4 Domain Enums
@@ -310,6 +357,7 @@ class CounterpartyRole(StrEnum):
     CLIENT = "CLIENT"
     SUPPLIER = "SUPPLIER"
     MIXED = "MIXED"
+    BOTH = "BOTH"
 
 class InvoiceType(StrEnum):
     RECEIVABLE = "RECEIVABLE"
@@ -317,9 +365,11 @@ class InvoiceType(StrEnum):
 
 class InvoiceStatus(StrEnum):
     PAID = "PAID"
+    SETTLED = "SETTLED"
     OUTSTANDING = "OUTSTANDING"
     OVERDUE = "OVERDUE"
     DEFAULTED = "DEFAULTED"
+    DISPUTED = "DISPUTED"
 
 class TransactionDirection(StrEnum):
     INFLOW = "INFLOW"
@@ -327,22 +377,31 @@ class TransactionDirection(StrEnum):
 
 class TransactionCategory(StrEnum):
     REVENUE = "REVENUE"
+    CLIENT_REVENUE = "CLIENT_REVENUE"
     OPERATING_EXPENSE = "OPERATING_EXPENSE"
+    SUPPLIER_PAYMENT = "SUPPLIER_PAYMENT"
     PAYROLL = "PAYROLL"
     TAX = "TAX"
     DEBT_SERVICE = "DEBT_SERVICE"
+    CREDIT_REPAYMENT = "CREDIT_REPAYMENT"
+    INTEREST_FEE = "INTEREST_FEE"
     DIVIDEND = "DIVIDEND"
     OTHER = "OTHER"
 
 class LiquidityClass(StrEnum):
     IMMEDIATE_CASH = "IMMEDIATE_CASH"
+    SHORT_TERM_RECEIVABLE = "SHORT_TERM_RECEIVABLE"
     RESTRICTED_ESCROW = "RESTRICTED_ESCROW"
     TERM_DEPOSIT = "TERM_DEPOSIT"
+    TIED_CAPITAL = "TIED_CAPITAL"
 
 class FacilityType(StrEnum):
     TERM_LOAN = "TERM_LOAN"
-    LEASING = "LEASING"
+    CREDIT_LINE = "CREDIT_LINE"
     LINE_OF_CREDIT = "LINE_OF_CREDIT"
+    OVERDRAFT = "OVERDRAFT"
+    LEASING = "LEASING"
+    FACTORING = "FACTORING"
 
 class AnalysisStatus(StrEnum):
     QUEUED = "QUEUED"
@@ -363,29 +422,29 @@ class EvaluationStatus(StrEnum):
 --------------------------------------------------------------------------------
 4.1 Frontend & REST API Gateway Layer
 - Physical Path: `src/fintech_app/main.py` and `src/fintech_app/api/`
-- Operational Context: Runs inside Uvicorn ASGI server process on port 8000. Handles HTTP requests,
-  deserializes JSON/multipart payloads, calls internal modules, and formats JSON responses.
+- Operational Context: Runs inside Uvicorn ASGI server process on port 8000. Handles HTTP
+  requests, deserializes JSON/multipart payloads, calls internal modules, and returns JSON.
 
 4.2 Intelligent Data Ingestion & Parser Module
 - Physical Path: `src/fintech_app/ingestion/`
-- Operational Context: Stateless utility module invoked by `upload.py` endpoint when bank statements
-  are submitted. Converts binary files (`.csv`, `.xlsx`) to DataFrames, applies fuzzy column mapping,
-  validates types via Pydantic, and returns normalized transaction dictionaries.
+- Operational Context: Stateless utility module invoked by analysis lifecycle endpoints.
+  Converts CSV statements, extracts transactions, validates schemas, queries external
+  intelligence, and returns normalized entities.
 
 4.3 Relational Database & Entity Storage Layer
 - Physical Path: `src/fintech_app/db/`
-- Operational Context: Interacts directly with PostgreSQL via psycopg/sqlalchemy drivers. Provides entity
-  dataclasses and execution context for reading raw financial transactions and persisting client state.
+- Operational Context: Interacts directly with PostgreSQL via psycopg pool. Provides entity
+  dataclasses and execution context for persisting and querying the relational graph.
 
 4.4 Predictive Machine Learning Engine
 - Physical Path: `src/fintech_app/ml/`
-- Operational Context: Invoked by forecast and scenario endpoints. Consumes normalized transactions from
-  database models, builds time-series models, computes delay probabilities, and simulates stress tests.
+- Operational Context: Invoked by analysis endpoints. Hydrates snapshot via CompanyDataLoader,
+  executes 9 submodules concurrently, computes investment attractiveness, and produces verdicts.
 
 4.5 Infrastructure & Shared Utilities
 - Physical Path: `src/fintech_app/core/` and `src/fintech_app/shared/`
-- Operational Context: Loaded at application startup. Configures global logging, settings, exception
-  handling, domain enums, and utility functions across all subsystems.
+- Operational Context: Loaded at application startup. Configures global logging, settings,
+  exception handling, domain enums, and utility functions across all subsystems.
 
 
 5. FAQ - KEY DEVELOPER GUIDANCE (HOW-TO INTERACTION GUIDE)
@@ -396,10 +455,14 @@ CLUSTER 5.1: DATABASE & RELATIONAL STORAGE LAYER (`src/fintech_app/db/`)
 Q1: How do I persist normalized transactions and handle query results via `DatabaseReport`?
 - Target Files: `src/fintech_app/db/connection.py`, `src/fintech_app/db/models.py`
 - Key Entities: `Database`, `DatabaseReport`, `TransactionRecord`
-- Workflow: Execute parameterized SQL with `db.cursor`, commit on success, and return a `DatabaseReport` contract.
+- Workflow: Execute parameterized SQL with `db.cursor`, commit on success, and return
+  a `DatabaseReport` contract.
 ```python
 # CORRECT & SECURE
-async def save_transaction(db: Database, business_id: UUID, account_id: UUID, amount: Decimal, tx_date: datetime, desc: str) -> DatabaseReport:
+async def save_transaction(
+    db: Database, business_id: UUID, account_id: UUID,
+    amount: Decimal, tx_date: datetime, desc: str
+) -> DatabaseReport:
     try:
         query = sql.SQL(
             "INSERT INTO transactions (business_id, account_id, amount, timestamp, category) "
@@ -408,7 +471,9 @@ async def save_transaction(db: Database, business_id: UUID, account_id: UUID, am
         report = await db.execute_query(query, [business_id, account_id, amount, tx_date, desc])
         return report
     except Exception as err:
-        return DatabaseReport(success=False, error=str(err), operation="INSERT", table_name="transactions")
+        return DatabaseReport(
+            success=False, error=str(err), operation="INSERT", table_name="transactions"
+        )
 ```
 
 Q2: How do I execute atomic multi-entity SQL transactions with rollback on failure?
@@ -417,21 +482,27 @@ Q2: How do I execute atomic multi-entity SQL transactions with rollback on failu
 - Workflow: Group multiple `execute()` calls under an `async with conn.transaction():` block.
 ```python
 # CORRECT & SECURE
-async def create_business_with_account(db: Database, legal_name: str, tax_id: str, currency: str) -> DatabaseReport:
+async def create_business_with_account(
+    db: Database, legal_name: str, tax_id: str, currency: str
+) -> DatabaseReport:
     try:
         async with db.pool.connection() as conn:
             async with conn.transaction():
                 cur = conn.cursor()
                 await cur.execute(
-                    "INSERT INTO businesses (legal_name, tax_id) VALUES (%s, %s) RETURNING business_id;",
+                    "INSERT INTO businesses (legal_name, tax_id) VALUES (%s, %s) "
+                    "RETURNING business_id;",
                     (legal_name, tax_id)
                 )
                 b_id = (await cur.fetchone())[0]
                 await cur.execute(
-                    "INSERT INTO bank_accounts (business_id, currency, current_balance) VALUES (%s, %s, 0.00);",
+                    "INSERT INTO bank_accounts (business_id, currency, current_balance) "
+                    "VALUES (%s, %s, 0.00);",
                     (b_id, currency)
                 )
-                return DatabaseReport(success=True, data={"business_id": b_id}, affected_rows=2, operation="INSERT")
+                return DatabaseReport(
+                    success=True, data={"business_id": b_id}, affected_rows=2, operation="INSERT"
+                )
     except Exception as err:
         return DatabaseReport(success=False, error=str(err))
 ```
@@ -483,7 +554,9 @@ Q5: How do I add support for a new file format (e.g., `.json` or `.pdf`)?
 ```python
 # CORRECT & SECURE
 class BankStatementParser:
-    def parse_pdf(self, file_content: bytes, account_id: UUID, business_id: UUID) -> ParsedBankStatementPayload:
+    def parse_pdf(
+        self, file_content: bytes, account_id: UUID, business_id: UUID
+    ) -> ParsedBankStatementPayload:
         # Extract tables from PDF bytes and construct payload DTO
         pass
 ```
@@ -525,7 +598,8 @@ class RawBankStatementLine(BaseModel):
 Q8: How do I handle unparseable or corrupted statement headers with `ParsingError`?
 - Target Files: `src/fintech_app/ingestion/ai_mapper.py`, `src/fintech_app/core/exceptions.py`
 - Key Entities: `ParsingError`
-- Workflow: Raise `ParsingError` when essential target fields (`amount` or `date`) cannot be identified.
+- Workflow: Raise `ParsingError` when essential target fields (`amount` or `date`)
+  cannot be identified.
 ```python
 # CORRECT & SECURE
 from src.fintech_app.core.exceptions import ParsingError
@@ -597,7 +671,8 @@ score = scoring_result.investment_attractiveness_score  # 0.0 to 100.0
 Q12: How should ML submodules handle missing data or unprovided entity files?
 - Target Files: `src/fintech_app/ml/submodule_*.py`
 - Key Entities: `EvaluationStatus.DATA_ABSENT`
-- Workflow: Return `SubmoduleResult` with status `DATA_ABSENT`, verdict `BYPASSED`, and numerical indices set to `None`.
+- Workflow: Return `SubmoduleResult` with status `DATA_ABSENT`, verdict `BYPASSED`,
+  and numerical indices set to `None`.
 ```python
 # CORRECT & SECURE
 if not snapshot.credit_obligations:
@@ -619,7 +694,8 @@ CLUSTER 5.4: REST API & SESSION ORCHESTRATION (`src/fintech_app/api/` & `main.py
 Q13: How do I register session execution endpoints in `api_router`?
 - Target Files: `src/fintech_app/api/endpoints/analysis.py`, `src/fintech_app/api/router.py`
 - Key Entities: `APIRouter()`
-- Workflow: Register routes for `/api/v1/analysis/start`, `/api/v1/analysis/stream/{run_id}`, and `/api/v1/analysis/report/{run_id}`.
+- Workflow: Register routes for `/api/v1/analysis/start`, `/api/v1/analysis/stream/{run_id}`,
+  and `/api/v1/analysis/report/{run_id}`.
 ```python
 # CORRECT & SECURE
 from fastapi import APIRouter
@@ -663,7 +739,8 @@ CLUSTER 5.5: INFRASTRUCTURE, CONFIGS & ENUMS (`src/fintech_app/core/` & `shared/
 Q16: How do I register a new environment configuration parameter?
 - Target Files: `src/fintech_app/core/config.py`, `.env.example`
 - Key Entities: `Settings`
-- Workflow: Add field to `Settings` dataclass in `config.py` and document variable in `.env.example`.
+- Workflow: Add field to `Settings` dataclass in `config.py` and document variable
+  in `.env.example`.
 ```python
 # CORRECT & SECURE
 from dataclasses import dataclass
@@ -711,50 +788,60 @@ def process_data(run_id: UUID):
 --------------------------------------------------------------------------------
 6.1 End-to-End Data Processing Pipeline
 
-Step 1: Enterprise Setup & File Intake
+Step 1: Intake & Initial Run Creation
 - Client submits company metadata and multipart CSV files to `POST /api/v1/analysis/start`.
 - Creates record in `analysis_runs` with status `QUEUED` and returns `{ "run_id": "UUID" }`.
+- Client connects to `GET /api/v1/analysis/stream/{run_id}` for SSE telemetry streaming.
 
-Step 2: Asynchronous Data Ingestion & Graph Creation
-- Background worker sets run status to `PARSING`.
-- CSV files are loaded by `BankStatementParser`, validated by Pydantic schemas, and inserted into PostgreSQL via `Database` methods (`businesses`, `counterparties`, `invoices`, `transactions`, `bank_accounts`, `credit_obligations`).
+Step 2: Ingestion & External Intelligence
+- Background worker updates run status to `PARSING`.
+- `IngestionPipeline` parses files via `BankStatementParser`, extracts transactions and entities.
+- `ExternalIntelligenceCollector` fetches external data (tax, court registries, web reputation)
+  with graceful fallback to mock data on timeout (>2.5s) or if `USE_MOCK_ENGINE=true`.
+- Relational graph is populated in PostgreSQL via DAL methods, returning `IngestionResult`.
 
-Step 3: Real-Time Telemetry & Log Streaming
-- Browser connects to `GET /api/v1/analysis/stream/{run_id}`.
-- Telemetry events emitted during parsing and submodule execution are written to `analysis_logs` and streamed to the client console via Server-Sent Events (SSE).
+Step 3: Verification Gate
+- Verification check ensures data readiness and graph integrity before proceeding to analysis.
+- If essential data is completely missing or corrupted, marks run `FAILED` with diagnostics.
+- When valid, transitions status to `PROCESSING`.
 
 Step 4: Analytical Core Evaluation (9 Submodules)
-- Worker constructs `CompanyDataSnapshot` for the business entity.
+- Hydrates `CompanyDataSnapshot` via `CompanyDataLoader` from the 57-method PostgreSQL DAL.
 - `UnderwritingAnalyticalPipeline` invokes all 9 submodules concurrently.
-- Produces the 18-element feature vector and plain-text diagnostic section reports.
+- Compiles the 18-element feature vector and plain-text diagnostic section reports.
 
-Step 5: Scoring, LLM Synthesis & Report Generation
-- `CreditScoringEngine` computes overall Investment Attractiveness Score (0-100) and probability of default.
-- LLM synthesizes submodule reports into executive summary narrative.
-- Final output payload is persisted into `analysis_runs` and run status marked as `COMPLETED`.
-
-Step 6: Underwriting Report Retrieval
-- Browser transitions to report viewer and fetches `GET /api/v1/analysis/report/{run_id}` to render radial gauge, 18 feature indices, 9 submodule cards, and LLM summary.
+Step 5: Scoring, Synthesis & Persistence
+- `CreditScoringEngine` computes Investment Attractiveness Score (0-100), default probability,
+  verdict category (`PRIME_LOW_RISK`, `MODERATE_MONITORED`, `HIGH_RISK_REJECT`), and
+  recommendation (`APPROVED`, `MANUAL_REVIEW`, `REJECTED`).
+- Synthesizes LLM memorandum narrative and sanitizes payload (converting NaN values to None).
+- Atomically persists complete report, score, and verdicts into `analysis_runs`.
+- Status is finalized as `COMPLETED` (or `DEGRADED` if submodules had absent data).
+- Full underwriting diagnostic dossier is retrieved via `GET /api/v1/analysis/report/{run_id}`.
 
 
 7. CONFIGS
 --------------------------------------------------------------------------------
-All configuration properties are loaded dynamically from environment variables or a `.env` file via `src/fintech_app/core/config.py`.
+All configuration properties are loaded dynamically from environment variables or a `.env`
+file via `src/fintech_app/core/config.py`.
 
 Configuration Property Reference:
 
-+--------------------+----------------+-------------------+---------------------------------------------------------+
-| Variable Name      | Type           | Default Value     | Description & Purpose                                   |
-+--------------------+----------------+-------------------+---------------------------------------------------------+
-| APP_ENV            | String         | "development"     | Execution environment ("development", "production").    |
-| LOG_LEVEL          | String         | "INFO"            | Logging verbosity ("DEBUG", "INFO", "WARNING", "ERROR").|
-| POSTGRES_SERVER    | String         | "localhost"       | Database host address ("db" inside Docker Compose).     |
-| POSTGRES_PORT      | Integer        | 5432              | PostgreSQL service port.                                |
-| POSTGRES_USER      | String         | "postgres"        | Database authentication username.                       |
-| POSTGRES_PASSWORD  | String         | "postgres"        | Database authentication password.                       |
-| POSTGRES_DB        | String         | "graeae_eye_db"   | Target database schema name.                            |
-| OPENAI_API_KEY     | String         | ""                | OpenAI API key for LLM narrative synthesis.             |
-+--------------------+----------------+-------------------+---------------------------------------------------------+
++-------------------+---------+-------------------------+------------------------------------+
+| Variable Name     | Type    | Default Value           | Description & Purpose              |
++-------------------+---------+-------------------------+------------------------------------+
+| APP_ENV           | String  | "development"           | Execution environment.             |
+| LOG_LEVEL         | String  | "INFO"                  | Logging verbosity level.           |
+| USE_MOCK_ENGINE   | Boolean | false                   | Fallback to in-memory mock engine. |
+| POSTGRES_SERVER   | String  | "localhost"             | Database host address.             |
+| POSTGRES_PORT     | Integer | 5432                    | PostgreSQL service port.           |
+| POSTGRES_USER     | String  | "postgres"              | Database auth username.            |
+| POSTGRES_PASSWORD | String  | "postgres"              | Database auth password.            |
+| POSTGRES_DB       | String  | "graeae_eye_db"         | Target database schema name.       |
+| OPENAI_API_KEY    | String  | ""                      | OpenAI API key for narrative.      |
+| LLM_MODEL         | String  | "gpt-4o-mini"           | Target model for LLM synthesis.    |
+| OLLAMA_HOST       | String  | "http://localhost:11434"| Local Ollama inference URL.        |
++-------------------+---------+-------------------------+------------------------------------+
 
 
 8. DEPENDENCIES AND ENVIRONMENT
@@ -766,7 +853,8 @@ Configuration Property Reference:
 - Containerization: Docker 24.0+ and Docker Compose v2+.
 
 8.2 Third-Party Packages & Frameworks (`requirements.txt`)
-- Core Web Framework: `fastapi >= 0.110.0`, `uvicorn[standard] >= 0.28.0`, `pydantic >= 2.6.4`, `python-multipart >= 0.0.9`.
+- Core Web Framework: `fastapi >= 0.110.0`, `uvicorn[standard] >= 0.28.0`,
+  `pydantic >= 2.6.4`, `python-multipart >= 0.0.9`.
 - Database Driver & Pool: `psycopg[binary] >= 3.1.18`, `psycopg-pool >= 3.2.1`.
 - Data Science & Machine Learning: `pandas >= 2.2.1`, `numpy >= 1.26.4`, `scipy >= 1.12.0`.
 - LLM Integration & Middleware: `openai >= 1.14.1`, `ollama >= 0.1.7`.
@@ -777,33 +865,40 @@ Configuration Property Reference:
 --------------------------------------------------------------------------------
 
 12.1 Use Case 1: Happy Path - Full Enterprise Analysis & Underwriting Dossier Generation
-- Context: An analyst initiates evaluation of an SME by submitting corporate metadata and full CSV package.
+- Context: An analyst initiates evaluation of an SME by submitting corporate metadata
+  and full CSV package.
 - Input Data:
-  - Form: `company_name="Agro Solutions SRL"`, `tax_id="1003600045123"`, `industry_code="A.01.11"`
-  - Files: `accounts.csv`, `transactions.csv`, `invoices.csv`, `obligations.csv`, `shareholders.csv`
+  - Form: `company_name="Agro Solutions SRL"`, `tax_id="1003600045123"`,
+    `industry_code="A.01.11"`
+  - Files: `accounts.csv`, `transactions.csv`, `invoices.csv`,
+    `obligations.csv`, `shareholders.csv`
   - Target Endpoint: `POST /api/v1/analysis/start`
 - System Execution Flow:
   1. Endpoint validates form and files, inserts record into `analysis_runs`, returns `run_id`.
   2. Client connects to `GET /api/v1/analysis/stream/{run_id}` for SSE telemetry.
-  3. Background worker parses files, populates entity graph, and builds `CompanyDataSnapshot`.
-  4. `UnderwritingAnalyticalPipeline` executes 9 submodules concurrently and extracts 18-element feature vector.
-  5. `CreditScoringEngine` computes score (82.5/100) and synthesizes LLM narrative dossier.
-  6. Client fetches `GET /api/v1/analysis/report/{run_id}` to display underwriting dossier.
+  3. `IngestionPipeline` parses files, fetches external intel, and populates entity graph.
+  4. Verification Gate passes; `CompanyDataLoader` loads `CompanyDataSnapshot`.
+  5. `UnderwritingAnalyticalPipeline` executes 9 submodules concurrently.
+  6. `CreditScoringEngine` computes score (82.5/100) and synthesizes LLM narrative dossier.
+  7. Client fetches `GET /api/v1/analysis/report/{run_id}` to display underwriting dossier.
 
 --------------------------------------------------------------------------------
 
 12.2 Use Case 2: Edge Case - Handling Omitted CSV File with Graceful Submodule Bypass
-- Context: Analyst submits enterprise evaluation without `obligations.csv` (Credit obligations history absent).
+- Context: Analyst submits enterprise evaluation without `obligations.csv`
+  (Credit obligations absent).
 - Input Data:
-  - Form: `company_name="Tech Services SRL"`, `tax_id="1003600099887"`, `industry_code="J.62.01"`
+  - Form: `company_name="Tech Services SRL"`, `tax_id="1003600099887"`,
+    `industry_code="J.62.01"`
   - Files: `accounts.csv`, `transactions.csv`, `invoices.csv` (omitted `obligations.csv`)
   - Target Endpoint: `POST /api/v1/analysis/start`
 - System Execution Flow:
   1. `analysis_runs` created and background pipeline initiated.
   2. Submodules 4.1 through 4.8 execute normally against available records.
-  3. Submodule 4.9 (`CreditDisciplineLeverageEvaluator`) detects empty obligations list in `CompanyDataSnapshot`.
-  4. Submodule 4.9 returns `SubmoduleResult` with status `DATA_ABSENT`, verdict `BYPASSED`, and null debt indices.
-  5. Pipeline compiles vector with null debt features; scoring engine computes score on available indices and notes data omission in report.
+  3. Submodule 4.9 (`CreditDisciplineLeverageEvaluator`) detects empty obligations list.
+  4. Submodule 4.9 returns `SubmoduleResult` with status `DATA_ABSENT`, verdict `BYPASSED`.
+  5. Pipeline compiles vector with null debt features; scoring engine renormalizes weights.
+  6. Final status set to `DEGRADED`; report explains missing debt data gracefully.
 - Expected Output Result:
   - Report HTTP 200: Submodule 4.9 rendered as `BYPASSED` card with amber explanation notice.
 
