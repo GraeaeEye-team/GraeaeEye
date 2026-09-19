@@ -9,13 +9,17 @@
 	<script>
 		function upd_status() {
 			var x = document.getElementById("status");
-			x.innerHTML = get("/health").responseText;
+			fetch("/health")
+				.then((response) => response.json())
+				.then((json) => x.innerHTML = json.status == "ok" ? json.service + " is ok" : "Internal error!" );
 		}
 		/* document.addEventListener('DOMContentLoaded', function() { upd_status(); }, false); */
 	</script>
 </head>
 <body>
-	<center><h1>Hello, World!</h1></center>
-	<button onclick="upd_status()">health:</button><span id="status"></span>
+	<center class="splash"><h1>GraeaeEye SPA</h1></center>
+	<div id="main">
+		<button onclick="upd_status()">health:</button><span id="status"></span>
+	</div>
 </body>
 </html>
