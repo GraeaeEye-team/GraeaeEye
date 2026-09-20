@@ -25,14 +25,26 @@ def get_db_connection() -> Generator[None, None, None]:
     yield None
 
 
-async def get_db() -> AsyncGenerator[Optional[object], None]:
+async def get_db(request: Request) -> AsyncGenerator[Optional[object], None]:
     """
-    Yields the active Database instance if available, or None in Phase 1 mock mode.
+    Yields the active Database / MockDatabase instance if available, or None.
 
-    Defensive against missing database layer or configuration.
+    Defensive against missing database layer, connection failures, or offline mock mode.
     """
-    # In Phase 1 mock mode, database persistence is bypassed
-    yield None
+    db = None
+    if hasattr(request, "app") and hasattr(request.app, "state"):
+        db = getattr(request.app.state, "db", None)
+
+    if db is None:
+        try:
+            from fintech_app.main import db_pool
+            db = db_pool
+        except Exception:
+            db = None
+
+    yield db
+
+
 
 
 async def get_current_user(request: Request) -> CurrentUser:

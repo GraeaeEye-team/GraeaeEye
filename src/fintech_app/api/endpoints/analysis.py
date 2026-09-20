@@ -1,5 +1,5 @@
 """
-Analysis Pipeline Endpoints for the GraeaeEye API (Phase 1).
+Analysis Pipeline Endpoints for the GraeaeEye API.
 
 Exposes:
 - POST /api/v1/analysis/start: Initiates pipeline execution (multipart/form-data)
@@ -8,10 +8,15 @@ Exposes:
 - GET  /api/v1/health: System health and engine status
 """
 
+from __future__ import annotations
+
+from datetime import date, datetime, timezone
+from decimal import Decimal
 import json
 import logging
-from typing import List, Optional
-from uuid import UUID
+import math
+from typing import Any, List, Optional
+from uuid import UUID, uuid4
 
 from fastapi import (
     APIRouter,
@@ -26,8 +31,10 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 
-from fintech_app.api.dependencies import get_current_user
+from fintech_app.api.contract_mapping import map_ml_result_to_analysis_report
+from fintech_app.api.dependencies import get_current_user, get_db
 from fintech_app.api.mock_provider import mock_analysis_provider
+from fintech_app.api.orchestration import execute_orchestration_worker
 from fintech_app.api.schemas import (
     AnalysisReportResponse,
     AnalysisStartResponse,
@@ -35,6 +42,11 @@ from fintech_app.api.schemas import (
     ErrorResponse,
     HealthResponse,
 )
+from fintech_app.api.stream_provider import stream_telemetry_from_db
+from fintech_app.core.config import settings
+from fintech_app.ml.base import EvaluationStatus, SubmoduleResult, clamp
+from fintech_app.ml.pipeline import UnderwritingPipelineResult
+from fintech_app.ml.scoring import CreditScoringEngine, CreditScoringResult
 from fintech_app.shared.schemas.user_types import AnalysisStatus
 
 logger = logging.getLogger(__name__)
@@ -50,6 +62,7 @@ router = APIRouter()
         202: {"model": AnalysisStartResponse, "description": "Analysis pipeline queued."},
         401: {"model": ErrorResponse, "description": "Unauthorized access."},
         422: {"model": ErrorResponse, "description": "Validation error or too many files."},
+        503: {"model": ErrorResponse, "description": "Database unavailable."},
     },
     openapi_extra={
         "requestBody": {
@@ -116,9 +129,10 @@ async def start_analysis(
         default=None, description="Uploaded CSV financial ledgers (max 5)"
     ),
     current_user: CurrentUser = Depends(get_current_user),
+    db: Any = Depends(get_db),
 ) -> AnalysisStartResponse:
     """Queues an underwriting analysis run and dispatches the background task."""
-    # File-count guard (executed BEFORE BackgroundTasks enqueue, None-safe)
+    # 1. File-count guard (executed BEFORE BackgroundTasks enqueue, None-safe)
     uploaded = files or []
     if len(uploaded) > 5:
         raise HTTPException(
@@ -129,7 +143,7 @@ async def start_analysis(
             },
         )
 
-    # Parse active_submodules JSON array
+    # 2. Parse active_submodules JSON array
     try:
         submodules_list = json.loads(active_submodules)
         if not isinstance(submodules_list, list):
@@ -144,19 +158,74 @@ async def start_analysis(
             },
         )
 
-    file_names = [f.filename or "unknown.csv" for f in uploaded]
+    # 3. Path Branching based on USE_MOCK_ENGINE
+    if settings.use_mock_engine:
+        file_names = [f.filename or "unknown.csv" for f in uploaded]
+        run_id = await mock_analysis_provider.create_run(
+            company_name=company_name,
+            tax_id=tax_id,
+            sector_code=sector_code,
+            active_submodules=submodules_list,
+            file_names=file_names,
+        )
+        background_tasks.add_task(mock_analysis_provider.execute_simulation, run_id)
+        return AnalysisStartResponse(run_id=run_id, status=AnalysisStatus.QUEUED)
 
-    # Create run in Phase 1 mock provider
-    run_id = await mock_analysis_provider.create_run(
+    # Real Orchestration Path
+    if db is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "detail": "Database service is currently unavailable.",
+                "code": "DB_UNAVAILABLE",
+            },
+        )
+
+    # Read uploaded file contents before background task dispatch
+    files_data: List[tuple[str, bytes]] = []
+    for f in uploaded:
+        content = await f.read()
+        files_data.append((f.filename or "ledger.csv", content))
+
+    files_manifest = {
+        "files": [{"filename": fname, "size": len(fbytes)} for fname, fbytes in files_data]
+    }
+
+    # Register enterprise record in businesses table
+    biz_rep = await db.add_record_to_businesses(
+        tax_id=tax_id,
+        legal_name=company_name,
+        industry_code=sector_code,
+        registration_date=date.today(),
+    )
+    business_id = biz_rep.data.get("business_id") if (biz_rep.success and biz_rep.data) else uuid4()
+
+    # Create run entry in analysis_runs
+    run_id = uuid4()
+    await db.add_record_to_analysis_runs(
+        user_id=current_user.user_id,
+        business_id=business_id,
+        run_id=run_id,
+        input_company_name=company_name,
+        input_tax_id=tax_id,
+        input_industry_code=sector_code,
+        files_manifest=files_manifest,
+        active_submodules=submodules_list,
+        status="QUEUED",
+    )
+
+    # Dispatch background orchestration worker
+    background_tasks.add_task(
+        execute_orchestration_worker,
+        db=db,
+        run_id=run_id,
+        business_id=business_id,
         company_name=company_name,
         tax_id=tax_id,
         sector_code=sector_code,
+        files_data=files_data,
         active_submodules=submodules_list,
-        file_names=file_names,
     )
-
-    # Dispatch background simulation (Rule 1 & Rule P8)
-    background_tasks.add_task(mock_analysis_provider.execute_simulation, run_id)
 
     return AnalysisStartResponse(run_id=run_id, status=AnalysisStatus.QUEUED)
 
@@ -167,28 +236,57 @@ async def start_analysis(
     status_code=status.HTTP_200_OK,
     responses={
         200: {"description": "Server-Sent Events telemetry stream."},
+        401: {"model": ErrorResponse, "description": "Unauthorized access."},
         404: {"model": ErrorResponse, "description": "Run not found."},
+        503: {"model": ErrorResponse, "description": "Database unavailable."},
     },
     summary="Real-time telemetry stream",
     description="Streams pipeline execution telemetry over Server-Sent Events (SSE).",
 )
-async def stream_analysis(run_id: UUID) -> StreamingResponse:
+async def stream_analysis(
+    run_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Any = Depends(get_db),
+) -> StreamingResponse:
     """Streams SSE telemetry events for the requested analysis run."""
-    run = await mock_analysis_provider.get_run(run_id)
-    if not run:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail={"detail": f"Analysis run '{run_id}' not found.", "code": "RUN_NOT_FOUND"},
-        )
-
     headers = {
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "X-Accel-Buffering": "no",
     }
 
+    if settings.use_mock_engine:
+        run = await mock_analysis_provider.get_run(run_id)
+        if not run:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"detail": f"Analysis run '{run_id}' not found.", "code": "RUN_NOT_FOUND"},
+            )
+        return StreamingResponse(
+            mock_analysis_provider.stream_telemetry(run_id),
+            media_type="text/event-stream",
+            headers=headers,
+        )
+
+    # Real Path
+    if db is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "detail": "Database service is currently unavailable.",
+                "code": "DB_UNAVAILABLE",
+            },
+        )
+
+    run_rep = await db.get_records_from_analysis_runs(find_only_first=True, run_id=run_id)
+    if not run_rep.success or not run_rep.data:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"detail": f"Analysis run '{run_id}' not found.", "code": "RUN_NOT_FOUND"},
+        )
+
     return StreamingResponse(
-        mock_analysis_provider.stream_telemetry(run_id),
+        stream_telemetry_from_db(db=db, run_id=run_id),
         media_type="text/event-stream",
         headers=headers,
     )
@@ -200,31 +298,144 @@ async def stream_analysis(run_id: UUID) -> StreamingResponse:
     status_code=status.HTTP_200_OK,
     responses={
         200: {"model": AnalysisReportResponse, "description": "Underwriting Dossier report."},
+        401: {"model": ErrorResponse, "description": "Unauthorized access."},
         404: {"model": ErrorResponse, "description": "Run not found."},
         409: {"model": ErrorResponse, "description": "Run has not completed yet."},
+        503: {"model": ErrorResponse, "description": "Database unavailable."},
     },
     summary="Retrieve underwriting report",
     description="Returns the comprehensive Underwriting Dossier with canonical 18D feature vector.",
 )
-async def get_report(run_id: UUID) -> AnalysisReportResponse:
+async def get_report(
+    run_id: UUID,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Any = Depends(get_db),
+) -> AnalysisReportResponse:
     """Fetches the final Underwriting Dossier once execution is completed."""
-    run = await mock_analysis_provider.get_run(run_id)
-    if not run:
+    if settings.use_mock_engine:
+        run = await mock_analysis_provider.get_run(run_id)
+        if not run:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"detail": f"Analysis run '{run_id}' not found.", "code": "RUN_NOT_FOUND"},
+            )
+
+        if run.status != AnalysisStatus.COMPLETED or run.report is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "detail": f"Analysis run '{run_id}' has not completed yet (current status: {run.status.value}).",
+                    "code": "RUN_NOT_READY",
+                },
+            )
+        return run.report
+
+    # Real Path
+    if db is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={
+                "detail": "Database service is currently unavailable.",
+                "code": "DB_UNAVAILABLE",
+            },
+        )
+
+    run_rep = await db.get_records_from_analysis_runs(find_only_first=True, run_id=run_id)
+    if not run_rep.success or not run_rep.data:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"detail": f"Analysis run '{run_id}' not found.", "code": "RUN_NOT_FOUND"},
         )
 
-    if run.status != AnalysisStatus.COMPLETED or run.report is None:
+    run_row = run_rep.data
+    run_status = str(run_row.get("status", "PROCESSING"))
+
+    if run_status not in ("COMPLETED", "DEGRADED"):
+        msg = (
+            f"Analysis run '{run_id}' has not completed yet (current status: {run_status})."
+            if run_status != "FAILED"
+            else f"Analysis run '{run_id}' failed: {run_row.get('failure_reason')}"
+        )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
-                "detail": f"Analysis run '{run_id}' has not completed yet (current status: {run.status.value}).",
+                "detail": msg,
                 "code": "RUN_NOT_READY",
             },
         )
 
-    return run.report
+    # Reconstruct UnderwritingPipelineResult from database records
+    raw_indices = run_row.get("raw_indices_payload") or {}
+    sub_reports = run_row.get("submodules_reports") or []
+
+    sub_results_dict: dict[str, SubmoduleResult] = {}
+    for sr in sub_reports:
+        code = str(sr.get("submodule_code") or "")
+        st_str = str(sr.get("status", "SUCCESS"))
+        if st_str == "DATA_ABSENT":
+            eval_st = EvaluationStatus.DATA_ABSENT
+        elif st_str == "ERROR":
+            eval_st = EvaluationStatus.ERROR
+        else:
+            eval_st = EvaluationStatus.SUCCESS
+
+        sub_results_dict[code] = SubmoduleResult(
+            submodule_code=code,
+            status=eval_st,
+            impact_weight=float(sr.get("impact_weight") or 0.0),
+            verdict=str(sr.get("verdict") or "OPTIMAL"),
+            indices=sr.get("indices") or {},
+            summary=str(sr.get("summary") or ""),
+            diagnostic_report=str(sr.get("diagnostic_report") or ""),
+        )
+
+    ordered_fv: List[Optional[float]] = []
+    for feat_name in CreditScoringEngine.FEATURE_NAMES:
+        val = raw_indices.get(feat_name)
+        if val is None:
+            val = raw_indices.get(feat_name.lower())
+        ordered_fv.append(float(val) if val is not None else None)
+
+    score_val = float(run_row.get("universal_score") or 50.0)
+    try:
+        pd_val = round(clamp(1.0 / (1.0 + math.exp((score_val - 50.0) / 12.0)), 0.001, 0.999), 4)
+    except OverflowError:
+        pd_val = 0.001 if score_val > 50.0 else 0.999
+
+    scoring_result = CreditScoringResult(
+        investment_attractiveness_score=score_val,
+        probability_of_default=pd_val,
+        verdict_category=str(run_row.get("verdict_category") or "MODERATE_MONITORED"),
+        recommendation=str(run_row.get("recommendation") or "MANUAL_REVIEW"),
+        executive_summary=str(run_row.get("llm_final_summary") or ""),
+    )
+
+    biz_id = run_row.get("business_id") or uuid4()
+    comp_at = run_row.get("completed_at")
+    as_of = comp_at.date() if isinstance(comp_at, datetime) else date.today()
+
+    pipeline_res = UnderwritingPipelineResult(
+        business_id=biz_id,
+        as_of_date=as_of,
+        feature_vector=ordered_fv,
+        submodule_results=sub_results_dict,
+        compiled_dossier_text=run_row.get("llm_final_summary") or "",
+        scoring_result=scoring_result,
+    )
+
+    created_at = run_row.get("created_at") or datetime.now(timezone.utc)
+    completed_at = run_row.get("completed_at") or datetime.now(timezone.utc)
+
+    return map_ml_result_to_analysis_report(
+        pipeline_result=pipeline_res,
+        run_id=run_id,
+        company_name=str(run_row.get("input_company_name") or "Evaluated Enterprise"),
+        tax_id=str(run_row.get("input_tax_id") or "0000000000000"),
+        sector_code=str(run_row.get("input_industry_code") or "0000"),
+        created_at=created_at,
+        completed_at=completed_at,
+        max_credit_limit_mdl=Decimal("1250000.00"),
+    )
 
 
 @router.get(
@@ -237,6 +448,10 @@ async def get_report(run_id: UUID) -> AnalysisReportResponse:
     summary="System health check",
     description="Returns service availability and status of mock and database subsystems.",
 )
-async def health_check() -> HealthResponse:
+async def health_check(db: Any = Depends(get_db)) -> HealthResponse:
     """Health check endpoint. Unauthenticated; guaranteed never to 500."""
-    return HealthResponse(status="ok", mock_engine=True, db="mock")
+    if settings.use_mock_engine:
+        return HealthResponse(status="ok", mock_engine=True, db="mock")
+
+    db_status = "connected" if db is not None else "unavailable"
+    return HealthResponse(status="ok", mock_engine=False, db=db_status)
