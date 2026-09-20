@@ -60,18 +60,6 @@ function init_forms() {
 			})
 	});
 
-	document.getElementById('theming-form').addEventListener('submit', async (e) => {
-		e.preventDefault();
-
-		fetch("/health")
-			.then((response) => response.json())
-		console.log("!")
-		const theme = document.getElementById("themes");
-		const themename = theme.options[theme.selectedIndex >= 0 ? theme.selectedIndex : 1].text;
-		config.setTheme();
-		console.log("Appling new theme!", themename);
-		console.log(config.getTheme())
-	});
 }
 
 document.addEventListener('DOMContentLoaded', function() {

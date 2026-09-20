@@ -1,6 +1,6 @@
 -- =============================================================================
 -- SMART CREDIT SYSTEM: CANONICAL RELATIONAL SCHEMA (PostgreSQL 16)
--- Target: src/fintech_app/db/schema.sql
+-- Target: ./schema.sql
 -- Specification: docs/database_architecture-v2.md
 -- =============================================================================
 

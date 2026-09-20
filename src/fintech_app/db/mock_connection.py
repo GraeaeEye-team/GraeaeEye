@@ -1,6 +1,6 @@
 """
 In-memory Mock Database implementation for offline testing and development.
-Target: src/fintech_app/db/mock_connection.py
+Target: ./mock_connection.py
 Specification: docs/database_architecture-v2.md (Section 8)
 """
 
@@ -13,10 +13,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-try:
-    from src.fintech_app.db.models import DatabaseReport
-except ModuleNotFoundError:
-    from fintech_app.db.models import DatabaseReport
+.models import DatabaseReport
 
 logger = logging.getLogger("smart_credit.db.mock_connection")
 

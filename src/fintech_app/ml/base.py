@@ -13,10 +13,7 @@ from decimal import Decimal
 import logging
 from typing import Any
 
-try:
-    from src.fintech_app.shared.schemas.user_types import EvaluationStatus
-except ModuleNotFoundError:
-    from fintech_app.shared.schemas.user_types import EvaluationStatus
+from ..shared.schemas.user_types import EvaluationStatus
 
 logger: logging.Logger = logging.getLogger("smart_credit.ml")
 

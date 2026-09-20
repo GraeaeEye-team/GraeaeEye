@@ -10,13 +10,9 @@ from uuid import UUID
 
 from fastapi import HTTPException, Request
 
-from fintech_app.api.schemas import CurrentUser
+from .schemas import CurrentUser
 
-# Defensive import of PostgreSQL Database class
-try:
-    from fintech_app.db.connection import Database
-except ImportError:
-    Database = None  # type: ignore[assignment,misc]
+from ..db.connection import Database
 
 
 # Backward compatibility symbol

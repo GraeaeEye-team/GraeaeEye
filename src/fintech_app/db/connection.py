@@ -1,6 +1,6 @@
 """
 Production-grade Asynchronous Data Access Layer (DAL) for the Smart Credit System.
-Target: src/fintech_app/db/connection.py
+Target: ./connection.py
 Specification: docs/database_architecture-v2.md
 """
 
@@ -13,23 +13,13 @@ import os
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
-try:
-    import psycopg
-    from psycopg import sql
-    from psycopg.rows import dict_row
-    from psycopg.types.json import Jsonb
-    from psycopg_pool import AsyncConnectionPool
-except ModuleNotFoundError:
-    psycopg = None  # type: ignore
-    sql = None  # type: ignore
-    dict_row = None  # type: ignore
-    Jsonb = None  # type: ignore
-    AsyncConnectionPool = Any  # type: ignore
+import psycopg
+from psycopg import sql
+from psycopg.rows import dict_row
+from psycopg.types.json import Jsonb
+from psycopg_pool import AsyncConnectionPool
 
-try:
-    from src.fintech_app.db.models import DatabaseReport
-except ModuleNotFoundError:
-    from fintech_app.db.models import DatabaseReport
+.models import DatabaseReport
 
 logger = logging.getLogger("smart_credit.db.connection")
 
@@ -1334,10 +1324,4 @@ class Database:
 
 
 # Export MockDatabase convenience alias if needed
-try:
-    from src.fintech_app.db.mock_connection import MockDatabase
-except ModuleNotFoundError:
-    try:
-        from fintech_app.db.mock_connection import MockDatabase
-    except Exception:
-        MockDatabase = None  # type: ignore
+.mock_connection import MockDatabase

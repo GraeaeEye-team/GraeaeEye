@@ -13,12 +13,14 @@
 	<div id="main">
 
 		<details id="cfg"><summary>Config</summary>
-			<div id="cfg-theme">
-				<span class="label">Theme: </span>
-				<button onclick="config.setTheme('light')">Light</button>
-				<button onclick="config.setTheme('system')">System</button>
-				<button onclick="config.setTheme('dark')">Dark</button>
-			</div>
+			<form id="theming-form>
+				<label class="label" for="themes">Theme: </label
+				<select id="themes" onchange="config.setTheme(this.value)">
+					<option value="system">System</option
+					<option value="light">Light</option
+					<option value="dark">Dark</option
+				</select>
+			</form>
 		</details>
 
 

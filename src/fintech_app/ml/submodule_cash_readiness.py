@@ -7,20 +7,12 @@ Calculates Cash Ratio (CR) and Days Cash on Hand (DCOH).
 from datetime import date, datetime, timedelta
 from typing import Any
 
-try:
-    from src.fintech_app.ml.base import (
-        BaseSubmoduleEvaluator,
-        SubmoduleResult,
-        clamp,
-    )
-    from src.fintech_app.shared.schemas.user_types import EvaluationStatus
-except ModuleNotFoundError:
-    from fintech_app.ml.base import (
-        BaseSubmoduleEvaluator,
-        SubmoduleResult,
-        clamp,
-    )
-    from fintech_app.shared.schemas.user_types import EvaluationStatus
+from .base import (
+    BaseSubmoduleEvaluator,
+    SubmoduleResult,
+    clamp,
+)
+from ..shared.schemas.user_types import EvaluationStatus
 
 
 class ImmediateCashReadinessEvaluator(BaseSubmoduleEvaluator):

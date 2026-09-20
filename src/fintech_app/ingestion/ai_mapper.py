@@ -12,13 +12,13 @@ import re
 from typing import Any, Dict, List, Optional, Set
 from uuid import UUID, uuid4
 
-from fintech_app.core.exceptions import ParsingError
-from fintech_app.ingestion.schemas import (
+from ..core.exceptions import ParsingError
+from .schemas import (
     NormalizedTransactionRecord,
     ParsedBankStatementPayload,
     StandardizedTransactionBatch,
 )
-from fintech_app.shared.schemas.user_types import (
+from ..shared.schemas.user_types import (
     LiquidityClass,
     TransactionCategory,
     TransactionDirection,
