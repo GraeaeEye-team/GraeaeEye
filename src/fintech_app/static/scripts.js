@@ -10,10 +10,13 @@ class ConfigSingleton {
 				return;
 			} catch (e) {
 				console.warn("cookieStore.set failed:", e);
-				try {
-					localStorage.setItem(name, value);
-				} catch {}
 			}
+		}
+
+		try {
+			localStorage.setItem(name, value);
+		} catch (e) {
+			console.warn("localStorage.set failed:", e);
 		}
 
 	}
@@ -33,12 +36,13 @@ class ConfigSingleton {
 	}
 
 	async setTheme(newTheme) {
-		await cookieStore.set('theme', newTheme);
+		await this.set('theme', newTheme);
 		await this.applyTheme();
 	}
 
 	async getTheme(defaultValue = "system") {
-		return this.get("theme", defaultValue);
+		const response = this.get("theme", defaultValue);
+		return response;
 	}
 }
 
@@ -51,6 +55,20 @@ function upd_status() {
 		.then(
 			(json) => status.innerHTML = json.status == "ok" ? json.service + " is ok" : "Internal error!"
 		)
+}
+
+function upd_theme() {
+	const button = document.getElementById("theming")
+	if (button.innerText == "🌗") {
+		config.setTheme("dark")
+		button.innerText = "🌙"
+	} else if (button.innerText == "🌙") {
+		config.setTheme("light")
+		button.innerText = "🌣"
+	} else {
+		config.setTheme("system")
+		button.innerText = "🌗"
+	}
 }
 
 function init_forms() {
@@ -74,6 +92,16 @@ function init_forms() {
 
 }
 
+function restore_theme() {
+	const button = document.getElementById("theming")
+	config.getTheme().then((theme) => {switch (theme) {
+		case "dark":  button.innerText = "🌙"; break;
+		case "light": button.innerText = "🌣"; break;
+		default :     button.innerText = "🌗";
+	}});
+}
+
 document.addEventListener('DOMContentLoaded', function() {
 	init_forms();
+	restore_theme();
 }, false);

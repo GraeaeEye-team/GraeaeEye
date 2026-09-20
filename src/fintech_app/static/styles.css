@@ -48,6 +48,16 @@ body {
     height: 1em;
 }
 
+#cfg-panel {
+    top: 0;
+    position: sticky;
+    float: right;
+}
+
 #main {
     margin: 1em;
+}
+
+.iconic {
+    font-size: 1.5em;
 }

@@ -12,20 +12,13 @@
 	<center class="splash"><h1><img src="/static/favicon.ico" alt="*">GraeaeEye SPA</h1></center>
 	<div id="main">
 
-		<details id="cfg"><summary>Config</summary>
-			<form id="theming-form">
-				<label class="label" for="themes">Theme: </label>
-				<select id="themes" onchange="config.setTheme(this.value)">
-					<option value="system">System</option>
-					<option value="light">Light</option>
-					<option value="dark">Dark</option>
-				</select>
-			</form>
-		</details>
-
+		<nav id="cfg-panel">
+			<button id="theming" class="iconic" onclick="upd_theme()">Th</button>
+		</nav>
 
 		<details id="req"><summary>Request area</summary>
-			<button onclick="upd_status()">health:</button><span id="status"></span>
+			<p><button onclick="upd_status()">health:</button><span id="status"></span></p>
+			<p><button onclick="upd_theme()">theme:</button><span id="theme"></span></p>
 
 			<form id="add-form">
 				<button type="submit">Simulate as POST:</button>

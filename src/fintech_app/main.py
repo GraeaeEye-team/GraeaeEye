@@ -91,12 +91,6 @@ app.add_middleware(
 app.include_router(api_router)
 
 
-@app.get("/health", tags=["Health Check"])
-async def health_check():
-    """Root health check probe matching upstream."""
-    return {"status": "ok", "service": "GraeaeEye API"}
-
-
 # =====================================================================
 # GLOBAL EXCEPTION HANDLERS (Rule P10: Standardized Error Envelope)
 # =====================================================================
