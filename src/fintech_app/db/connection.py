@@ -40,6 +40,15 @@ class Database:
     leveraging psycopg v3 and psycopg_pool.
     """
 
+    _instance: Optional[Database] = None
+
+    @classmethod
+    def get_instance(cls) -> Database:
+        """Returns or creates the singleton Database instance."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
     def __init__(
         self,
         pool: Optional[AsyncConnectionPool] = None,
@@ -63,8 +72,10 @@ class Database:
                 user = os.getenv("POSTGRES_USER", "postgres")
                 password = os.getenv("POSTGRES_PASSWORD", "postgres")
                 dbname = os.getenv("POSTGRES_DB", "graeae_eye_db")
+                connect_timeout = os.getenv("POSTGRES_CONNECT_TIMEOUT", "3")
                 conninfo = (
-                    f"host={host} port={port} user={user} password={password} dbname={dbname}"
+                    f"host={host} port={port} user={user} password={password} "
+                    f"dbname={dbname} connect_timeout={connect_timeout}"
                 )
 
             self.pool = AsyncConnectionPool(
@@ -77,10 +88,10 @@ class Database:
             )
             self._managed_pool = True
 
-    async def open(self) -> None:
+    async def open(self, wait: bool = False, timeout: float = 5.0) -> None:
         """Opens the managed connection pool if created internally."""
         if self._managed_pool and self.pool is not None:
-            await self.pool.open()
+            await self.pool.open(wait=wait, timeout=timeout)
 
     async def close(self) -> None:
         """Safely drains and closes the managed connection pool."""
@@ -272,6 +283,25 @@ class Database:
                 operation="SELECT",
                 table_name=table_name,
             )
+
+    async def select_records(
+        self,
+        table_name: str,
+        conditions: Optional[Dict[str, Any]] = None,
+        find_only_first: bool = False,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        order_by: Optional[str] = None,
+    ) -> DatabaseReport:
+        """Generic select helper for dynamic table queries."""
+        return await self._execute_select(
+            table_name=table_name,
+            filters=conditions or {},
+            find_only_first=find_only_first,
+            limit=limit,
+            offset=offset,
+            order_by=order_by,
+        )
 
     async def _execute_update(
         self,
