@@ -2,7 +2,9 @@
 Точка входа веб-приложения FastAPI, как модуля python.
 См. main.py
 """
-from .main import *
 import uvicorn
 
-uvicorn.run(app, port=3000, log_level="info")
+from fintech_app.main import app
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

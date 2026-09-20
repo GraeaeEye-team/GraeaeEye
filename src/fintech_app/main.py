@@ -16,6 +16,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fintech_app.core.config import settings
 from .api.router import api_router
 
 logger = logging.getLogger("fintech_app")
@@ -34,15 +35,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     global db_pool
     logger.info("Initializing GraeaeEye API startup lifecycle...")
 
-    try:
-        from fintech_app.db.connection import Database
+    if not settings.use_mock_engine:
+        try:
+            from fintech_app.db.connection import Database
 
-        logger.info("Database module detected: %s. Operating with database capabilities.", Database)
-    except (ImportError, Exception) as exc:
-        logger.warning(
-            "Database module or driver unavailable (%s). Falling back to mock engine mode.",
-            exc,
-        )
+            if Database is not None:
+                db_inst = Database.get_instance()
+                await db_inst.open()
+                db_pool = db_inst
+                logger.info("Production database pool opened successfully.")
+        except Exception as exc:
+            logger.warning("Database initialization failed: %s. Falling back to mock engine.", exc)
+    else:
+        logger.info("Operating in mock engine mode (use_mock_engine=True).")
 
     yield
 
@@ -50,7 +55,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if db_pool is not None:
         try:
             if hasattr(db_pool, "close"):
-                db_pool.close()
+                await db_pool.close()
             elif hasattr(db_pool, "aclose"):
                 await db_pool.aclose()
             logger.info("Database pool closed successfully.")
@@ -130,12 +135,17 @@ async def validation_exception_handler(
     """Standardizes request validation failures into {"detail": str, "code": "VALIDATION_ERROR"}."""
     error_messages = []
     for err in exc.errors():
-        loc = " -> ".join(str(l) for l in err.get("loc", []))
+        loc = " -> ".join(str(elem) for elem in err.get("loc", []))
         msg = err.get("msg", "invalid")
         error_messages.append(f"{loc}: {msg}")
 
     detail_str = "; ".join(error_messages) if error_messages else "Request validation failed."
-    logger.warning("Request validation failed on %s %s: %s", request.method, request.url.path, detail_str)
+    logger.warning(
+        "Request validation failed on %s %s: %s",
+        request.method,
+        request.url.path,
+        detail_str,
+    )
 
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -146,7 +156,12 @@ async def validation_exception_handler(
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     """Catches all unhandled exceptions and returns a sanitized 500 without leaking tracebacks."""
-    logger.exception("Unhandled server exception on %s %s: %s", request.method, request.url.path, exc)
+    logger.exception(
+        "Unhandled server exception on %s %s: %s",
+        request.method,
+        request.url.path,
+        exc,
+    )
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -170,13 +185,19 @@ if STATIC_DIR.is_dir():
         index_file = STATIC_DIR / "index.html"
         if index_file.is_file():
             return FileResponse(index_file)
-        return JSONResponse({"detail": "SPA index.html not found.", "code": "NOT_FOUND"}, status_code=404)
+        return JSONResponse(
+            {"detail": "SPA index.html not found.", "code": "NOT_FOUND"},
+            status_code=404,
+        )
 
     @app.get("/favicon.ico", include_in_schema=False)
     async def serve_fav():
         fav_file = STATIC_DIR / "favicon.ico"
         if fav_file.is_file():
             return FileResponse(fav_file)
-        return JSONResponse({"detail": "Favicon not found.", "code": "NOT_FOUND"}, status_code=404)
+        return JSONResponse(
+            {"detail": "Favicon not found.", "code": "NOT_FOUND"},
+            status_code=404,
+        )
 else:
     logger.warning("STATIC_DIR '%s' does not exist; SPA serving disabled.", STATIC_DIR)

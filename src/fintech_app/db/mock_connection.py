@@ -27,6 +27,15 @@ class MockDatabase:
     for offline development, CI pipelines, and unit testing.
     """
 
+    _instance: Optional[MockDatabase] = None
+
+    @classmethod
+    def get_instance(cls) -> MockDatabase:
+        """Returns or creates the singleton MockDatabase instance."""
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
     def __init__(self) -> None:
         self._storage: Dict[str, List[Dict[str, Any]]] = {
             "businesses": [],
@@ -141,6 +150,24 @@ class MockDatabase:
             affected_rows=len(matches),
             operation="SELECT",
             table_name=table_name,
+        )
+
+    async def select_records(
+        self,
+        table_name: str,
+        conditions: Optional[Dict[str, Any]] = None,
+        find_only_first: bool = False,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+        order_by: Optional[str] = None,
+    ) -> DatabaseReport:
+        """Generic select helper for dynamic table queries in mock database."""
+        return self._mock_select(
+            table_name=table_name,
+            filters=conditions or {},
+            find_only_first=find_only_first,
+            limit=limit,
+            offset=offset,
         )
 
     def _mock_update(
