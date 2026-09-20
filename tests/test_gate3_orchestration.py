@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 
 sys.path.insert(0, os.path.abspath("src"))
 
@@ -159,24 +160,25 @@ async def test_gate3_happy_path_with_mock_database():
         "2025-02-05,-1200.00,Plata impozite buget,100300\n"
     )
 
-    fields = {
-        "company_name": "Moldova Tech Solutions SRL",
-        "tax_id": "1007601234567",
-        "sector_code": "6201",
-        "active_submodules": '["OS","WPR","MSR","CD","SD","ICR","CFS","RQ","ICDL"]',
-    }
-    files = [("transactions.csv", csv_content)]
-    body, ct = build_multipart(fields, files)
-
     # 2. POST /api/v1/analysis/start
-    st, hdrs, b = await asgi_call(
-        "POST",
+    client = TestClient(app)
+    auth_token_val = auth_cookie.split("session_token=")[1]
+    client.cookies.set("session_token", auth_token_val)
+
+    response = client.post(
         "/api/v1/analysis/start",
-        {"content-type": ct, "cookie": auth_cookie},
-        body,
+        data={
+            "company_name": "Moldova Tech Solutions SRL",
+            "tax_id": "1007601234567",
+            "sector_code": "6201",
+            "active_submodules": '["OS","WPR","MSR","CD","SD","ICR","CFS","RQ","ICDL"]',
+        },
+        files=[
+            ("files", ("transactions.csv", csv_content.encode("utf-8"), "text/csv")),
+        ],
     )
-    assert st == 202, f"Expected 202 Accepted, got {st}: {b.decode('utf-8')}"
-    resp = json.loads(b.decode("utf-8"))
+    assert response.status_code == 202, f"Expected 202 Accepted, got {response.status_code}: {response.text}"
+    resp = response.json()
     assert "run_id" in resp
     assert resp["status"] == "QUEUED"
     run_id = UUID(resp["run_id"])
@@ -268,27 +270,44 @@ async def test_gate3_mock_mode_regression():
     """
     settings.use_mock_engine = True
 
-    fields = {
-        "company_name": "Acme Holdings SRL",
-        "tax_id": "1007600000000",
-        "sector_code": "6201",
-        "active_submodules": '["OS","WPR"]',
-    }
-    files = [("accounts.csv", "id,balance\n1,1000.0\n")]
-    body, ct = build_multipart(fields, files)
+    client = TestClient(app)
+    mock_token_val = MOCK_COOKIE.split("session_token=")[1]
+    client.cookies.set("session_token", mock_token_val)
 
     # 1. POST /start returns 202
-    st, _, b = await asgi_call("POST", "/api/v1/analysis/start", {"content-type": ct, "cookie": MOCK_COOKIE}, body)
-    assert st == 202
-    resp = json.loads(b.decode("utf-8"))
+    response = client.post(
+        "/api/v1/analysis/start",
+        data={
+            "company_name": "Acme Holdings SRL",
+            "tax_id": "1007600000000",
+            "sector_code": "6201",
+            "active_submodules": '["OS","WPR"]',
+        },
+        files=[
+            ("files", ("accounts.csv", b"id,balance\n1,1000.0\n", "text/csv")),
+        ],
+    )
+    assert response.status_code == 202
+    resp = response.json()
     assert "run_id" in resp
 
     # 2. Upload >5 files -> 422 TOO_MANY_FILES
-    six_files = [(f"f_{i}.csv", "data\n1\n") for i in range(6)]
-    b6, ct6 = build_multipart(fields, six_files)
-    st6, _, b6_resp = await asgi_call("POST", "/api/v1/analysis/start", {"content-type": ct6, "cookie": MOCK_COOKIE}, b6)
-    assert st6 == 422
-    assert "TOO_MANY_FILES" in b6_resp.decode("utf-8")
+    six_files = [
+        ("files", (f"f_{i}.csv", b"data\n1\n", "text/csv"))
+        for i in range(6)
+    ]
+    response6 = client.post(
+        "/api/v1/analysis/start",
+        data={
+            "company_name": "Acme Holdings SRL",
+            "tax_id": "1007600000000",
+            "sector_code": "6201",
+            "active_submodules": '["OS","WPR"]',
+        },
+        files=six_files,
+    )
+    assert response6.status_code == 422
+    assert "TOO_MANY_FILES" in response6.text
 
     # 3. Unknown UUID stream -> 404 RUN_NOT_FOUND
     st_unk, _, b_unk = await asgi_call("GET", f"/api/v1/analysis/stream/{uuid4()}", {"cookie": MOCK_COOKIE})

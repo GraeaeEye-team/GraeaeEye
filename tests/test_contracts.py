@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 sys.path.insert(0, os.path.abspath("src"))
@@ -206,22 +207,26 @@ async def test_status_codes_mapping():
         assert data_404.get("code") == "RUN_NOT_FOUND"
 
         # C. 422 TOO_MANY_FILES (>5 files uploaded to /analysis/start)
-        fields = {
-            "company_name": "Test Co",
-            "tax_id": "1234567890123",
-            "sector_code": "6201",
-            "active_submodules": '["OS","WPR"]',
-        }
-        six_files = [(f"file_{i}.csv", "col\nval\n") for i in range(6)]
-        b6, ct6 = build_multipart(fields, six_files)
-        st_422_files, _, b_422_files = await asgi_call(
-            "POST",
+        client = TestClient(app)
+        mock_token_val = MOCK_COOKIE.split("session_token=")[1]
+        client.cookies.set("session_token", mock_token_val)
+
+        six_files = [
+            ("files", (f"file_{i}.csv", b"col\nval\n", "text/csv"))
+            for i in range(6)
+        ]
+        resp_too_many = client.post(
             "/api/v1/analysis/start",
-            {"content-type": ct6, "cookie": MOCK_COOKIE},
-            b6,
+            data={
+                "company_name": "Test Co",
+                "tax_id": "1234567890123",
+                "sector_code": "6201",
+                "active_submodules": '["OS","WPR"]',
+            },
+            files=six_files,
         )
-        assert st_422_files == 422
-        data_422_files = json.loads(b_422_files.decode("utf-8"))
+        assert resp_too_many.status_code == 422
+        data_422_files = resp_too_many.json()
         assert data_422_files.get("code") == "TOO_MANY_FILES"
 
         # D. 422 VALIDATION_ERROR (malformed payload for registration)
