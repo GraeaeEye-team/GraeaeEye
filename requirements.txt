@@ -32,3 +32,6 @@ ruff>=0.3.2,<0.4.0
 
 # Development & Testing Tooling
 pytest>=8.0.0,<9.0.0
+
+pytest-asyncio>=0.23.0,<1.0.0
+anyio>=4.0.0
