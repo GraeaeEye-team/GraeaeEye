@@ -25,11 +25,11 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-@app.get("/")
+@app.get("/", response_class=FileResponse)
 async def serve_spa():
-    return FileResponse(STATIC_DIR / "index.html")
+    return STATIC_DIR / "index.html"
 
-@app.get("/favicon.ico")
+@app.get("/favicon.ico", response_class=FileResponse)
 async def serve_fav():
-    return FileResponse(STATIC_DIR / "favicon.ico")
+    return STATIC_DIR / "favicon.ico"
 

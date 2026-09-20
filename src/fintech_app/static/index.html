@@ -1,25 +1,35 @@
 <!DOCTYPE html>
-<html lang="ru_RU">
+<html lang="en">
 <head>
 	<title>GraeaeEye</title>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link rel="stylesheet" href="/static/styles.css">
 	<script src="/static/scripts.js"></script>
-	<script>
-		function upd_status() {
-			var x = document.getElementById("status");
-			fetch("/health")
-				.then((response) => response.json())
-				.then((json) => x.innerHTML = json.status == "ok" ? json.service + " is ok" : "Internal error!" );
-		}
-		/* document.addEventListener('DOMContentLoaded', function() { upd_status(); }, false); */
-	</script>
+	<link rel="shortcut icon" href="/static/favicon.ico" type="image/x-icon">
 </head>
 <body>
-	<center class="splash"><h1>GraeaeEye SPA</h1></center>
+	<center class="splash"><h1><img src="/static/favicon.ico" alt="*">GraeaeEye SPA</h1></center>
 	<div id="main">
-		<button onclick="upd_status()">health:</button><span id="status"></span>
+
+		<details id="cfg"><summary>Config</summary>
+			<div id="cfg-theme">
+				<span class="label">Theme: </span>
+				<button onclick="config.setTheme('light')">Light</button>
+				<button onclick="config.setTheme('system')">System</button>
+				<button onclick="config.setTheme('dark')">Dark</button>
+			</div>
+		</details>
+
+
+		<details id="req"><summary>Request area</summary>
+			<button onclick="upd_status()">health:</button><span id="status"></span>
+
+			<form id="add-form">
+				<button type="submit">Simulate as POST:</button>
+			</form><span id="simulate"></span>
+		</details>
+
 	</div>
 </body>
 </html>
