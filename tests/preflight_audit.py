@@ -2,6 +2,7 @@
 Комплексный статический чекер готовности проекта GraeaeEye к запуску.
 Проверяет компиляцию, корректность DDL, импортопригодность роутов и целостность контрактов.
 """
+
 from __future__ import annotations
 
 import ast
@@ -84,9 +85,11 @@ def check_import_contracts() -> None:
             log_error(f"Не удалось импортировать {mod_name}: {exc}")
 
 
-def check_port_consistency() -> None:
-    """3. Проверка соответствия портов во всех точках входа."""
-    print("\n--- 3. Проверка согласованности портов (8000 vs 3000) ---")
+def check_configuration_and_dependencies() -> None:
+    """3. Проверка согласованности конфигураций, портов, переменных окружения и зависимостей."""
+    print("\n--- 3. Проверка конфигураций, портов и зависимостей ---")
+
+    # 1.1. Выравнивание портов
     main_py = SRC_DIR / "fintech_app" / "__main__.py"
     if main_py.exists():
         content = main_py.read_text(encoding="utf-8")
@@ -100,10 +103,78 @@ def check_port_consistency() -> None:
     dockerfile = ROOT_DIR / "Dockerfile"
     if dockerfile.exists():
         content = dockerfile.read_text(encoding="utf-8")
-        if "--port 8000" in content or '"8000"' in content:
-            log_ok("Dockerfile настроен на порт 8000.")
+        if "EXPOSE 8000" in content and ("--port 8000" in content or '"8000"' in content):
+            log_ok("Dockerfile: EXPOSE 8000 и CMD слушают порт 8000.")
         else:
-            log_error("Dockerfile содержит некорректный порт для Uvicorn.")
+            log_error("Dockerfile содержит некорректный порт для Uvicorn или отсутствует EXPOSE 8000.")
+
+        # 1.2. PYTHONPATH и запуск без src.
+        if "ENV PYTHONPATH=/app/src" in content or "PYTHONPATH=/app/src" in content:
+            log_ok("Dockerfile: задана директива ENV PYTHONPATH=/app/src.")
+        else:
+            log_error("Dockerfile: отсутствует директива ENV PYTHONPATH=/app/src.")
+
+        if "uvicorn fintech_app.main:app" in content or '"fintech_app.main:app"' in content:
+            log_ok("Dockerfile: запуск Uvicorn использует путь без префикса src.")
+        else:
+            log_error("Dockerfile: запуск Uvicorn должен использовать модуль fintech_app.main:app.")
+
+    # docker-compose.yml
+    compose_file = ROOT_DIR / "docker-compose.yml"
+    if compose_file.exists():
+        c_text = compose_file.read_text(encoding="utf-8")
+        if '"8000:8000"' in c_text or "'8000:8000'" in c_text or "8000:8000" in c_text:
+            log_ok("docker-compose.yml: порт backend проброшен как 8000:8000.")
+        else:
+            log_error("docker-compose.yml: отсутствует строгий проброс портов 8000:8000 для backend.")
+
+        if "PYTHONPATH=/app/src" in c_text or "PYTHONPATH: /app/src" in c_text:
+            log_ok("docker-compose.yml: PYTHONPATH=/app/src передан в сервисы backend и db-backup.")
+        else:
+            log_error("docker-compose.yml: не найдена переменная PYTHONPATH=/app/src.")
+
+        if "- db" in c_text and "aliases:" in c_text:
+            log_ok("docker-compose.yml: служба postgres объявлена с сетевым псевдонимом db.")
+        else:
+            log_error("docker-compose.yml: отсутствует сетевой псевдоним db у сервиса postgres.")
+
+    # .env.example
+    env_example = ROOT_DIR / ".env.example"
+    if env_example.exists():
+        e_text = env_example.read_text(encoding="utf-8")
+        required_env_vars = [
+            "POSTGRES_SERVER",
+            "POSTGRES_PORT",
+            "POSTGRES_USER",
+            "POSTGRES_PASSWORD",
+            "POSTGRES_DB",
+            "BACKUP_INTERVAL_SECONDS",
+        ]
+        missing_vars = [v for v in required_env_vars if v not in e_text]
+        if missing_vars:
+            log_error(f".env.example не содержит обязательные переменные: {missing_vars}")
+        else:
+            log_ok(".env.example содержит все обязательные параметры БД и резервного копирования.")
+
+    # requirements.txt
+    req_file = ROOT_DIR / "requirements.txt"
+    if req_file.exists():
+        r_text = req_file.read_text(encoding="utf-8")
+        required_pkgs = [
+            "psycopg",
+            "psycopg-pool",
+            "openpyxl",
+            "aiofiles",
+            "pydantic-settings",
+            "python-multipart",
+        ]
+        missing_pkgs = [p for p in required_pkgs if p not in r_text]
+        if missing_pkgs:
+            log_error(f"requirements.txt не содержит пакеты: {missing_pkgs}")
+        else:
+            log_ok(
+                "requirements.txt содержит все обязательные системные библиотеки (psycopg, openpyxl, aiofiles, pydantic-settings, python-multipart)."
+            )
 
 
 def check_database_schema_ddl() -> None:
@@ -171,7 +242,7 @@ def check_fastapi_routes() -> None:
 def main() -> None:
     print("🚀 Запуск статической проверки готовности к старту...")
     check_python_compilation()
-    check_port_consistency()
+    check_configuration_and_dependencies()
     check_database_schema_ddl()
     check_import_contracts()
     check_fastapi_routes()

@@ -31,9 +31,22 @@ MOCK_USER_PRINCIPAL = CurrentUser(
 )
 
 
-def get_db_connection() -> Generator[None, None, None]:
-    """Preserved legacy stub for database connection generator."""
-    yield None
+def get_db_connection() -> Generator[Any, None, None]:
+    """Database connection generator yielding active database instance."""
+    if not settings.use_mock_engine:
+        try:
+            from fintech_app.db.connection import Database
+
+            yield Database.get_instance()
+            return
+        except Exception:
+            pass
+    try:
+        from fintech_app.db.mock_connection import MockDatabase
+
+        yield MockDatabase.get_instance()
+    except Exception:
+        yield None
 
 
 async def get_db(request: Request) -> AsyncGenerator[Optional[object], None]:
@@ -42,15 +55,25 @@ async def get_db(request: Request) -> AsyncGenerator[Optional[object], None]:
 
     Defensive against missing database layer, connection failures, or offline mock mode.
     """
-    db = None
-    if hasattr(request, "app") and hasattr(request.app, "state"):
-        db = getattr(request.app.state, "db", None)
+    if hasattr(request, "app") and hasattr(request.app, "state") and hasattr(request.app.state, "db"):
+        yield request.app.state.db
+        return
 
-    if db is None:
+    db = None
+    try:
+        from fintech_app.main import db_pool
+
+        db = db_pool
+    except Exception:
+        db = None
+
+    if db is None and not settings.use_mock_engine:
         try:
-            from fintech_app.main import db_pool
-            db = db_pool
-        except Exception:
+            from fintech_app.db.connection import Database
+
+            db = Database.get_instance()
+        except Exception as exc:
+            logger.warning("Could not acquire Database instance in get_db: %s", exc)
             db = None
 
     yield db
@@ -58,14 +81,22 @@ async def get_db(request: Request) -> AsyncGenerator[Optional[object], None]:
 
 async def get_current_user(request: Request) -> CurrentUser:
     """
-    Authenticates the incoming request via secure HttpOnly session cookie.
+    Authenticates the incoming request via secure HttpOnly session cookie or Bearer header.
 
-    - Reads 'session_token' cookie. Missing -> 401 UNAUTHORIZED.
+    - Reads 'session_token' cookie or 'Authorization: Bearer <token>' header. Missing -> 401 UNAUTHORIZED.
     - If db is None or settings.use_mock_engine: returns mock principal.
     - If db is present: validates JWT signature & expiration, queries users table by sub (UUID).
       Raises 401 UNAUTHORIZED on invalid token, expired token, or nonexistent user.
     """
     session_token = request.cookies.get("session_token")
+    if not session_token:
+        auth_header = request.headers.get("Authorization") or request.headers.get("authorization")
+        if auth_header and auth_header.strip():
+            parts = auth_header.strip().split()
+            if len(parts) == 2 and parts[0].lower() == "bearer":
+                session_token = parts[1]
+            elif len(parts) == 1:
+                session_token = parts[0]
 
     if not session_token:
         raise HTTPException(
@@ -80,6 +111,7 @@ async def get_current_user(request: Request) -> CurrentUser:
     if db is None:
         try:
             from fintech_app.main import db_pool
+
             db = db_pool
         except Exception:
             db = None

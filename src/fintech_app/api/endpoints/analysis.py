@@ -72,12 +72,6 @@ router = APIRouter()
                 "multipart/form-data": {
                     "schema": {
                         "type": "object",
-                        "required": [
-                            "company_name",
-                            "tax_id",
-                            "sector_code",
-                            "active_submodules",
-                        ],
                         "properties": {
                             "company_name": {
                                 "type": "string",
@@ -94,11 +88,26 @@ router = APIRouter()
                                 "title": "Sector Code",
                                 "description": "Industry sector code (NACE/CAEM)",
                             },
+                            "input_company_name": {
+                                "type": "string",
+                                "title": "Input Company Name",
+                                "description": "Alternative field for legal company name",
+                            },
+                            "input_tax_id": {
+                                "type": "string",
+                                "title": "Input Tax Id",
+                                "description": "Alternative field for tax identification number",
+                            },
+                            "input_industry_code": {
+                                "type": "string",
+                                "title": "Input Industry Code",
+                                "description": "Alternative field for industry sector code",
+                            },
                             "active_submodules": {
                                 "type": "string",
                                 "title": "Active Submodules",
                                 "description": (
-                                    'JSON array of active submodule codes, e.g. ["OS","WPR","MSR","CD","SD","ICR","CFS","RQ","ICDL"]'
+                                    'Optional JSON array of active submodule codes, e.g. ["OS","WPR","MSR","CD","SD","ICR","CFS","RQ","ICDL"]. Defaults to all submodules.'
                                 ),
                             },
                             "files": {
@@ -120,21 +129,51 @@ router = APIRouter()
 )
 async def start_analysis(
     background_tasks: BackgroundTasks,
-    company_name: str = Form(..., description="Legal company name"),
-    tax_id: str = Form(..., description="Tax identification number (IDNO)"),
-    sector_code: str = Form(..., description="Industry sector code (NACE/CAEM)"),
-    active_submodules: str = Form(
-        ...,
-        description='JSON array of active submodule codes, e.g. ["OS","WPR","MSR","CD","SD","ICR","CFS","RQ","ICDL"]',
+    company_name: Optional[str] = Form(None, description="Legal company name"),
+    tax_id: Optional[str] = Form(None, description="Tax identification number (IDNO)"),
+    sector_code: Optional[str] = Form(None, description="Industry sector code (NACE/CAEM)"),
+    input_company_name: Optional[str] = Form(None, description="Alternative field for legal company name"),
+    input_tax_id: Optional[str] = Form(None, description="Alternative field for tax ID"),
+    input_industry_code: Optional[str] = Form(None, description="Alternative field for sector code"),
+    active_submodules: Optional[str] = Form(
+        None,
+        description='Optional JSON array of active submodule codes, e.g. ["OS","WPR","MSR","CD","SD","ICR","CFS","RQ","ICDL"]. Defaults to all submodules.',
     ),
-    files: List[UploadFile] = File(
-        ..., description="Uploaded CSV financial ledgers (max 5)"
-    ),
+    files: List[UploadFile] = File(default=[], description="Uploaded CSV financial ledgers (max 5)"),
     current_user: CurrentUser = Depends(get_current_user),
     db: Any = Depends(get_db),
 ) -> AnalysisStartResponse:
-    """Queues an underwriting analysis run and dispatches the background task."""
-    # 1. File-count guard (executed BEFORE BackgroundTasks enqueue, None-safe)
+    # 1. Resolve company_name, tax_id, and sector_code (with alias support)
+    resolved_company_name = (company_name or input_company_name or "").strip()
+    resolved_tax_id = (tax_id or input_tax_id or "").strip()
+    resolved_sector_code = (sector_code or input_industry_code or "").strip()
+
+    if not resolved_company_name:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "detail": "Field 'company_name' (or 'input_company_name') is required.",
+                "code": "VALIDATION_ERROR",
+            },
+        )
+    if not resolved_tax_id:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "detail": "Field 'tax_id' (or 'input_tax_id') is required.",
+                "code": "VALIDATION_ERROR",
+            },
+        )
+    if not resolved_sector_code:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "detail": "Field 'sector_code' (or 'input_industry_code') is required.",
+                "code": "VALIDATION_ERROR",
+            },
+        )
+
+    # 2. File-count guard (executed BEFORE BackgroundTasks enqueue, None-safe)
     uploaded = files or []
     if len(uploaded) > 5:
         raise HTTPException(
@@ -145,29 +184,34 @@ async def start_analysis(
             },
         )
 
-    # 2. Parse active_submodules JSON array
-    try:
-        submodules_list = json.loads(active_submodules)
-        if not isinstance(submodules_list, list):
-            raise ValueError("Expected a JSON array of strings")
-    except Exception as exc:
-        logger.warning("Invalid active_submodules payload: %s", exc)
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={
-                "detail": f"Invalid active_submodules format: {exc}",
-                "code": "VALIDATION_ERROR",
-            },
-        )
+    # 3. Parse active_submodules JSON array if provided
+    submodules_list: Optional[List[str]] = None
+    if active_submodules and active_submodules.strip():
+        try:
+            parsed = json.loads(active_submodules)
+            if not isinstance(parsed, list):
+                raise ValueError("Expected a JSON array of strings")
+            submodules_list = [str(x) for x in parsed]
+        except Exception as exc:
+            logger.warning("Invalid active_submodules payload: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "detail": f"Invalid active_submodules format: {exc}",
+                    "code": "VALIDATION_ERROR",
+                },
+            )
 
-    # 3. Path Branching based on USE_MOCK_ENGINE
+    canonical_submodules = ["OS", "WPR", "MSR", "CD", "SD", "ICR", "CFS", "RQ", "ICDL"]
+
+    # 4. Path Branching based on USE_MOCK_ENGINE
     if settings.use_mock_engine:
         file_names = [f.filename or "unknown.csv" for f in uploaded]
         run_id = await mock_analysis_provider.create_run(
-            company_name=company_name,
-            tax_id=tax_id,
-            sector_code=sector_code,
-            active_submodules=submodules_list,
+            company_name=resolved_company_name,
+            tax_id=resolved_tax_id,
+            sector_code=resolved_sector_code,
+            active_submodules=submodules_list or canonical_submodules,
             file_names=file_names,
         )
         background_tasks.add_task(mock_analysis_provider.execute_simulation, run_id)
@@ -189,18 +233,21 @@ async def start_analysis(
         content = await f.read()
         files_data.append((f.filename or "ledger.csv", content))
 
-    files_manifest = {
-        "files": [{"filename": fname, "size": len(fbytes)} for fname, fbytes in files_data]
-    }
+    files_manifest = {"files": [{"filename": fname, "size": len(fbytes)} for fname, fbytes in files_data]}
 
-    # Register enterprise record in businesses table
-    biz_rep = await db.add_record_to_businesses(
-        tax_id=tax_id,
-        legal_name=company_name,
-        industry_code=sector_code,
-        registration_date=date.today(),
-    )
-    business_id = biz_rep.data.get("business_id") if (biz_rep.success and biz_rep.data) else uuid4()
+    # Register or resolve enterprise record in businesses table
+    existing_biz = await db.get_records_from_businesses(find_only_first=True, tax_id=resolved_tax_id)
+    if existing_biz.success and existing_biz.data:
+        existing_data = existing_biz.data[0] if isinstance(existing_biz.data, list) else existing_biz.data
+        business_id = UUID(str(existing_data.get("business_id")))
+    else:
+        biz_rep = await db.add_record_to_businesses(
+            tax_id=resolved_tax_id,
+            legal_name=resolved_company_name,
+            industry_code=resolved_sector_code,
+            registration_date=date.today(),
+        )
+        business_id = UUID(str(biz_rep.data.get("business_id"))) if (biz_rep.success and biz_rep.data) else uuid4()
 
     # Create run entry in analysis_runs
     run_id = uuid4()
@@ -208,11 +255,11 @@ async def start_analysis(
         user_id=current_user.user_id,
         business_id=business_id,
         run_id=run_id,
-        input_company_name=company_name,
-        input_tax_id=tax_id,
-        input_industry_code=sector_code,
+        input_company_name=resolved_company_name,
+        input_tax_id=resolved_tax_id,
+        input_industry_code=resolved_sector_code,
         files_manifest=files_manifest,
-        active_submodules=submodules_list,
+        active_submodules=submodules_list or canonical_submodules,
         status="QUEUED",
     )
 
@@ -222,9 +269,9 @@ async def start_analysis(
         db=db,
         run_id=run_id,
         business_id=business_id,
-        company_name=company_name,
-        tax_id=tax_id,
-        sector_code=sector_code,
+        company_name=resolved_company_name,
+        tax_id=resolved_tax_id,
+        sector_code=resolved_sector_code,
         files_data=files_data,
         active_submodules=submodules_list,
     )
@@ -399,10 +446,7 @@ async def get_report(
         ordered_fv.append(float(val) if val is not None else None)
 
     score_val = float(run_row.get("universal_score") or 50.0)
-    try:
-        pd_val = round(clamp(1.0 / (1.0 + math.exp((score_val - 50.0) / 12.0)), 0.001, 0.999), 4)
-    except OverflowError:
-        pd_val = 0.001 if score_val > 50.0 else 0.999
+    pd_val = CreditScoringEngine.calculate_probability_of_default(score_val)
 
     scoring_result = CreditScoringResult(
         investment_attractiveness_score=score_val,

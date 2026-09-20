@@ -4,7 +4,7 @@ Periodically generates native PostgreSQL custom binary dumps (`pg_dump -F c`)
 and captures a final consistent state on container termination (SIGTERM/SIGINT).
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 import os
 from pathlib import Path
@@ -36,9 +36,7 @@ POSTGRES_DB: str = os.getenv("POSTGRES_DB", "graeae_eye_db")
 BACKUP_DIR: Path = Path(
     os.getenv(
         "BACKUP_DIR",
-        "/app/src/fintech_app/db/backups"
-        if Path("/app").exists()
-        else "src/fintech_app/db/backups",
+        "/app/src/fintech_app/db/backups" if Path("/app").exists() else "src/fintech_app/db/backups",
     )
 )
 BACKUP_INTERVAL_SECONDS: int = int(os.getenv("BACKUP_INTERVAL_SECONDS", "300"))
@@ -69,7 +67,11 @@ def is_database_populated(
     pwd = password or POSTGRES_PASSWORD
     db = dbname or POSTGRES_DB
 
-    query = (
+    check_schema_query = (
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_schema = 'public' AND table_name IN ('businesses', 'transactions', 'analysis_runs');"
+    )
+    count_query = (
         "SELECT "
         "(SELECT COUNT(*) FROM businesses) + "
         "(SELECT COUNT(*) FROM transactions) + "
@@ -85,7 +87,13 @@ def is_database_populated(
             connect_timeout=5,
         ) as conn:
             with conn.cursor() as cur:
-                cur.execute(query)
+                cur.execute(check_schema_query)
+                schema_row = cur.fetchone()
+                if not schema_row or schema_row[0] < 3:
+                    logger.info("Database schema not yet fully provisioned. Skipping backup cycle.")
+                    return False
+
+                cur.execute(count_query)
                 row = cur.fetchone()
                 if row and row[0] is not None:
                     total_rows = int(row[0])
@@ -121,9 +129,7 @@ def create_safe_dump(
     db = dbname or POSTGRES_DB
 
     if not is_database_populated(host=h, port=p, user=u, password=pwd, dbname=db):
-        logger.warning(
-            "Database is empty or unpopulated. Dump aborted to protect active state."
-        )
+        logger.warning("Database is empty or unpopulated. Dump aborted to protect active state.")
         return False
 
     tmp_file = session_file.with_name(f"{session_file.name}.tmp")
@@ -218,7 +224,7 @@ def main() -> None:
     backup_dir = BACKUP_DIR
     backup_dir.mkdir(parents=True, exist_ok=True)
 
-    session_filename = f"backup_session_{datetime.now().strftime('%Y-%m-%d_%H%M%S')}.dump"
+    session_filename = f"backup_session_{datetime.now(timezone.utc).strftime('%Y-%m-%d_%H%M%S')}.dump"
     session_file = backup_dir / session_filename
 
     logger.info("Starting Backup Daemon.")
@@ -254,4 +260,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-

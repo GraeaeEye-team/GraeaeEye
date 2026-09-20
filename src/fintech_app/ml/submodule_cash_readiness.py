@@ -4,6 +4,7 @@ Evaluates total liquid cash against immediate 30-day operational obligations
 (payroll, taxes, due payables).
 Calculates Cash Ratio (CR) and Days Cash on Hand (DCOH).
 """
+
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -41,23 +42,17 @@ class ImmediateCashReadinessEvaluator(BaseSubmoduleEvaluator):
                 },
                 summary="No bank account records present.",
                 diagnostic_report=(
-                    "[SUBMODULE 4.6: IMMEDIATE CASH READINESS]\n"
-                    "STATUS: DATA_ABSENT\n"
-                    "VERDICT: DATA_ABSENT"
+                    "[SUBMODULE 4.6: IMMEDIATE CASH READINESS]\n" "STATUS: DATA_ABSENT\n" "VERDICT: DATA_ABSENT"
                 ),
             )
 
         # 1. Available Liquidity (MDL accounts)
-        mdl_accounts = [
-            acc for acc in bank_accounts
-            if str(getattr(acc, "currency", "MDL")).upper() == "MDL"
-        ]
+        mdl_accounts = [acc for acc in bank_accounts if str(getattr(acc, "currency", "MDL")).upper() == "MDL"]
         # Fallback to all bank accounts if none explicitly marked MDL
         active_accounts = mdl_accounts if mdl_accounts else bank_accounts
 
         liquid_cash = sum(
-            float(getattr(acc, "current_balance", 0.0))
-            + float(getattr(acc, "overdraft_limit", 0.0))
+            float(getattr(acc, "current_balance", 0.0)) + float(getattr(acc, "overdraft_limit", 0.0))
             for acc in active_accounts
         )
 

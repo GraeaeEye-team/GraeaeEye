@@ -7,7 +7,7 @@ Specification: docs/database_architecture-v2.md (Section 8)
 from __future__ import annotations
 
 import copy
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 import logging
 from typing import Any, Dict, List, Optional
@@ -51,13 +51,17 @@ class MockDatabase:
         }
         self.is_open: bool = False
 
-    async def open(self) -> None:
+    async def open(self, wait: bool = False, timeout: float = 5.0) -> None:
         """Simulates opening database connection pool."""
         self.is_open = True
 
     async def close(self) -> None:
         """Simulates closing database connection pool."""
         self.is_open = False
+
+    async def apply_schema_if_needed(self, schema_path: Optional[str] = None) -> bool:
+        """Simulates self-healing DDL application on mock startup."""
+        return True
 
     async def health_check(self) -> bool:
         """Returns True if mock database is healthy."""
@@ -121,11 +125,7 @@ class MockDatabase:
         limit: Optional[int] = None,
         offset: Optional[int] = None,
     ) -> DatabaseReport:
-        matches = [
-            copy.deepcopy(row)
-            for row in self._storage[table_name]
-            if self._matches_filters(row, filters)
-        ]
+        matches = [copy.deepcopy(row) for row in self._storage[table_name] if self._matches_filters(row, filters)]
 
         if offset is not None:
             matches = matches[offset:]
@@ -228,6 +228,18 @@ class MockDatabase:
         total_board_seats: int = 1,
         independent_directors_count: int = 0,
     ) -> DatabaseReport:
+        for row in self._storage["businesses"]:
+            if row.get("tax_id") == tax_id:
+                row["legal_name"] = legal_name
+                row["industry_code"] = industry_code
+                return DatabaseReport(
+                    success=True,
+                    data=copy.deepcopy(row),
+                    affected_rows=1,
+                    operation="INSERT",
+                    table_name="businesses",
+                )
+
         data = {
             "business_id": business_id or uuid4(),
             "tax_id": tax_id,
@@ -266,9 +278,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "businesses", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("businesses", filters, delete_only_first=delete_only_first)
 
     async def add_record_to_shareholders(
         self,
@@ -314,9 +324,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "shareholders", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("shareholders", filters, delete_only_first=delete_only_first)
 
     # =========================================================================
     # CLUSTER 2: EXTERNAL INTELLIGENCE & MACRO DATA
@@ -336,7 +344,7 @@ class MockDatabase:
         data = {
             "record_id": record_id or uuid4(),
             "business_id": business_id,
-            "scan_timestamp": scan_timestamp or datetime.now(),
+            "scan_timestamp": scan_timestamp or datetime.now(timezone.utc),
             "active_lawsuits_count": active_lawsuits_count,
             "total_lawsuit_claims_amount": total_lawsuit_claims_amount,
             "is_in_sanctions_list": is_in_sanctions_list,
@@ -372,9 +380,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "web_reputation", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("web_reputation", filters, delete_only_first=delete_only_first)
 
     async def add_record_to_macro_sector_metrics(
         self,
@@ -422,9 +428,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "macro_sector_metrics", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("macro_sector_metrics", filters, delete_only_first=delete_only_first)
 
     # =========================================================================
     # CLUSTER 3: COMMERCIAL GRAPH & CASH FLOW LEDGER
@@ -474,9 +478,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "counterparties", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("counterparties", filters, delete_only_first=delete_only_first)
 
     async def add_record_to_invoices(
         self,
@@ -495,9 +497,7 @@ class MockDatabase:
             "business_id": business_id,
             "counterparty_id": counterparty_id,
             "invoice_type": invoice_type,
-            "gross_amount": (
-                abs(gross_amount) if gross_amount is not None else gross_amount
-            ),
+            "gross_amount": (abs(gross_amount) if gross_amount is not None else gross_amount),
             "issue_date": issue_date,
             "due_date": due_date,
             "actual_payment_date": actual_payment_date,
@@ -532,9 +532,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "invoices", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("invoices", filters, delete_only_first=delete_only_first)
 
     async def add_record_to_bank_accounts(
         self,
@@ -580,9 +578,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "bank_accounts", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("bank_accounts", filters, delete_only_first=delete_only_first)
 
     async def add_record_to_transactions(
         self,
@@ -638,9 +634,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "transactions", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("transactions", filters, delete_only_first=delete_only_first)
 
     # =========================================================================
     # CLUSTER 4: LIABILITIES & DEBT FACILITIES
@@ -664,17 +658,11 @@ class MockDatabase:
             "business_id": business_id,
             "lender_name": lender_name,
             "facility_type": facility_type,
-            "principal_amount": (
-                abs(principal_amount) if principal_amount is not None else principal_amount
-            ),
+            "principal_amount": (abs(principal_amount) if principal_amount is not None else principal_amount),
             "outstanding_balance": (
-                abs(outstanding_balance)
-                if outstanding_balance is not None
-                else outstanding_balance
+                abs(outstanding_balance) if outstanding_balance is not None else outstanding_balance
             ),
-            "monthly_payment": (
-                abs(monthly_payment) if monthly_payment is not None else monthly_payment
-            ),
+            "monthly_payment": (abs(monthly_payment) if monthly_payment is not None else monthly_payment),
             "past_due_30d_count": past_due_30d_count,
             "past_due_90d_count": past_due_90d_count,
             "historical_defaults_count": historical_defaults_count,
@@ -708,9 +696,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "credit_obligations", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("credit_obligations", filters, delete_only_first=delete_only_first)
 
     # =========================================================================
     # CLUSTER 5: WEB APPLICATION IDENTITY & EXECUTION TELEMETRY
@@ -762,9 +748,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "users", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("users", filters, delete_only_first=delete_only_first)
 
     async def add_record_to_user_settings(
         self,
@@ -810,9 +794,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "user_settings", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("user_settings", filters, delete_only_first=delete_only_first)
 
     async def add_record_to_analysis_runs(
         self,
@@ -850,7 +832,7 @@ class MockDatabase:
             "verdict_category": verdict_category,
             "recommendation": recommendation,
             "failure_reason": failure_reason,
-            "created_at": datetime.now(),
+            "created_at": datetime.now(timezone.utc),
         }
         return self._mock_insert("analysis_runs", data)
 
@@ -881,9 +863,7 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "analysis_runs", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("analysis_runs", filters, delete_only_first=delete_only_first)
 
     async def add_record_to_analysis_logs(
         self,
@@ -901,7 +881,7 @@ class MockDatabase:
             "severity": severity,
             "stage": stage,
             "message": message,
-            "timestamp": timestamp or datetime.now(),
+            "timestamp": timestamp or datetime.now(timezone.utc),
         }
         return self._mock_insert("analysis_logs", data)
 
@@ -932,17 +912,13 @@ class MockDatabase:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return self._mock_delete(
-            "analysis_logs", filters, delete_only_first=delete_only_first
-        )
+        return self._mock_delete("analysis_logs", filters, delete_only_first=delete_only_first)
 
     # =========================================================================
     # BULK INGESTION METHODS
     # =========================================================================
 
-    async def bulk_insert_transactions(
-        self, records: List[Dict[str, Any]]
-    ) -> DatabaseReport:
+    async def bulk_insert_transactions(self, records: List[Dict[str, Any]]) -> DatabaseReport:
         """Simulates high-velocity bulk insert for transactions in-memory."""
         if not records:
             return DatabaseReport(
@@ -969,9 +945,7 @@ class MockDatabase:
             table_name="transactions",
         )
 
-    async def bulk_insert_invoices(
-        self, records: List[Dict[str, Any]]
-    ) -> DatabaseReport:
+    async def bulk_insert_invoices(self, records: List[Dict[str, Any]]) -> DatabaseReport:
         """Simulates high-velocity bulk insert for invoices in-memory."""
         if not records:
             return DatabaseReport(
@@ -997,4 +971,3 @@ class MockDatabase:
             operation="BULK_INSERT",
             table_name="invoices",
         )
-

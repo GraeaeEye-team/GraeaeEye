@@ -17,6 +17,48 @@ from fintech_app.db.mock_connection import MockDatabase
 from fintech_app.ml.pipeline import UnderwritingAnalyticalPipeline
 from scripts.seed_fixtures import seed_profile
 
+GOOD_SME_VECTOR: list[float | None] = [
+    85.0,
+    90.0,  # OS
+    92.0,
+    88.0,  # WPR
+    80.0,  # MSR
+    85.0,
+    87.0,  # CD
+    82.0,
+    85.0,  # SD
+    90.0,
+    88.0,  # ICR
+    85.0,
+    86.0,  # CFS
+    88.0,
+    90.0,  # RQ
+    85.0,
+    88.0,
+    85.0,  # ICDL
+]
+
+RISKY_SME_VECTOR: list[float | None] = [
+    20.0,
+    15.0,  # OS
+    18.0,
+    22.0,  # WPR
+    25.0,  # MSR
+    15.0,
+    12.0,  # CD
+    18.0,
+    20.0,  # SD
+    22.0,
+    18.0,  # ICR
+    20.0,
+    25.0,  # CFS
+    18.0,
+    15.0,  # RQ
+    20.0,
+    18.0,
+    15.0,  # ICDL
+]
+
 
 @pytest.mark.asyncio
 async def test_fixtures_score_ranges_and_contrast():

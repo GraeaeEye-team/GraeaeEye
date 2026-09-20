@@ -3,6 +3,7 @@ Submodule 4.5: Supplier Dependency Evaluator (SD).
 Evaluates vendor spend concentration (Vendor_HHI) and primary vendor exposure
 across paid payable invoices and operating expenditure transactions over the trailing 12 months.
 """
+
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -50,10 +51,7 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
             inv_type = str(getattr(inv, "invoice_type", "")).upper()
             status = str(getattr(inv, "status", "")).upper()
             if inv_type == "PAYABLE" and status in ("SETTLED", "PAID"):
-                doc_date = (
-                    getattr(inv, "actual_payment_date", None)
-                    or getattr(inv, "issue_date", None)
-                )
+                doc_date = getattr(inv, "actual_payment_date", None) or getattr(inv, "issue_date", None)
                 if isinstance(doc_date, datetime):
                     doc_date = doc_date.date()
                 if doc_date is not None and (doc_date < start_date or doc_date > as_of_date):
@@ -116,9 +114,7 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
                 },
                 summary="No payable invoice or vendor expenditure records present.",
                 diagnostic_report=(
-                    "[SUBMODULE 4.5: SUPPLIER DEPENDENCY]\n"
-                    "STATUS: DATA_ABSENT\n"
-                    "VERDICT: DATA_ABSENT"
+                    "[SUBMODULE 4.5: SUPPLIER DEPENDENCY]\n" "STATUS: DATA_ABSENT\n" "VERDICT: DATA_ABSENT"
                 ),
             )
 
@@ -128,7 +124,7 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
         shares = [(float(amt) / total_spend) * 100.0 for _, amt in sorted_vendors]
 
         # 5. Vendor Herfindahl-Hirschman Index (Vendor_HHI)
-        vendor_hhi = sum(s ** 2 for s in shares)
+        vendor_hhi = sum(s**2 for s in shares)
 
         # 6. Primary Vendor Dependency Ratio
         primary_vendor_share = shares[0] if shares else 0.0
@@ -138,17 +134,11 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
         robustness_idx = clamp(100.0 - primary_vendor_share)
 
         # 8. Verdict Determination
-        verdict = (
-            "DIVERSIFIED_SUPPLY_CHAIN"
-            if primary_vendor_share < 40.0
-            else "MONOPOLISTIC_SUPPLIER_RISK"
-        )
+        verdict = "DIVERSIFIED_SUPPLY_CHAIN" if primary_vendor_share < 40.0 else "MONOPOLISTIC_SUPPLIER_RISK"
 
         # Build counterparty names lookup for diagnostic report
         cp_names = {
-            str(getattr(cp, "counterparty_id", "")): getattr(
-                cp, "legal_name", str(getattr(cp, "counterparty_id", ""))
-            )
+            str(getattr(cp, "counterparty_id", "")): getattr(cp, "legal_name", str(getattr(cp, "counterparty_id", "")))
             for cp in counterparties
         }
         top_vendor_id = sorted_vendors[0][0] if sorted_vendors else "N/A"
@@ -176,10 +166,7 @@ class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
                 "Supplier_Diversification_Index": diversification_idx,
                 "Supply_Chain_Robustness_Index": robustness_idx,
             },
-            summary=(
-                f"Vendor HHI: {vendor_hhi:.1f}, "
-                f"Top Supplier Share: {primary_vendor_share:.1f}%."
-            ),
+            summary=(f"Vendor HHI: {vendor_hhi:.1f}, " f"Top Supplier Share: {primary_vendor_share:.1f}%."),
             diagnostic_report=report,
         )
 

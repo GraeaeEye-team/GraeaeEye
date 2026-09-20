@@ -4,6 +4,7 @@ Runs all 9 autonomous submodules concurrently against CompanyDataSnapshot,
 builds the standardized 18-element feature vector, and compiles the diagnostic report dossier.
 Provides asynchronous database-backed evaluation via CompanyDataLoader.
 """
+
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -97,15 +98,17 @@ class UnderwritingAnalyticalPipeline:
         ]
 
     def run_analysis(
-        self, snapshot: Any, as_of_date: date | None = None
+        self,
+        snapshot: Any,
+        as_of_date: date | None = None,
+        active_submodules: Optional[list[str]] = None,
     ) -> UnderwritingPipelineResult:
         """
-        Executes all 9 submodules with per-submodule exception isolation,
+        Executes active submodules with per-submodule exception isolation,
         aggregates the canonical 18-element feature vector, and compiles the diagnostic dossier.
         """
-        raw_bid = (
-            getattr(snapshot, "business_id", None)
-            or getattr(getattr(snapshot, "business", None), "business_id", None)
+        raw_bid = getattr(snapshot, "business_id", None) or getattr(
+            getattr(snapshot, "business", None), "business_id", None
         )
         if raw_bid is None:
             business_id = UUID("00000000-0000-0000-0000-000000000000")
@@ -119,11 +122,7 @@ class UnderwritingAnalyticalPipeline:
         else:
             raw_snap_date = getattr(snapshot, "as_of_date", None)
             if raw_snap_date is not None:
-                cutoff_date = (
-                    raw_snap_date.date()
-                    if isinstance(raw_snap_date, datetime)
-                    else raw_snap_date
-                )
+                cutoff_date = raw_snap_date.date() if isinstance(raw_snap_date, datetime) else raw_snap_date
             else:
                 cutoff_date = date.today()
 
@@ -131,6 +130,24 @@ class UnderwritingAnalyticalPipeline:
 
         for sm in self.submodules:
             code = sm.submodule_code
+            if active_submodules is not None and code not in active_submodules:
+                empty_indices = dict(self.SUBMODULE_EMPTY_INDICES.get(code, {}))
+                results[code] = SubmoduleResult(
+                    submodule_code=code,
+                    status=EvaluationStatus.DATA_ABSENT,
+                    impact_weight=sm.impact_weight,
+                    verdict="SKIPPED",
+                    indices=empty_indices,
+                    summary=f"Submodule {code} was disabled in active_submodules configuration.",
+                    diagnostic_report=(
+                        f"[{code}]\n"
+                        f"STATUS: DATA_ABSENT\n"
+                        f"VERDICT: SKIPPED\n"
+                        f"NOTE: Submodule disabled by configuration."
+                    ),
+                )
+                continue
+
             try:
                 res = sm.evaluate(snapshot)
                 results[res.submodule_code] = res
@@ -149,12 +166,7 @@ class UnderwritingAnalyticalPipeline:
                     verdict="ERROR",
                     indices=empty_indices,
                     summary=f"Evaluation encountered error: {exc}",
-                    diagnostic_report=(
-                        f"[{code}]\n"
-                        f"STATUS: ERROR\n"
-                        f"VERDICT: ERROR\n"
-                        f"ERROR: {exc}"
-                    ),
+                    diagnostic_report=(f"[{code}]\n" f"STATUS: ERROR\n" f"VERDICT: ERROR\n" f"ERROR: {exc}"),
                 )
 
         # Construct 18-element feature vector strictly in canonical order
@@ -189,9 +201,7 @@ class UnderwritingAnalyticalPipeline:
             icdl_res.indices.get("Solvency_Leverage_Index") if icdl_res else None,
         ]
 
-        assert len(feature_vector) == 18, (
-            f"Expected 18 elements in feature vector, got {len(feature_vector)}"
-        )
+        assert len(feature_vector) == 18, f"Expected 18 elements in feature vector, got {len(feature_vector)}"
 
         # Compile plain text diagnostic dossier from non-empty diagnostic reports
         dossier_sections = [
@@ -215,16 +225,19 @@ class UnderwritingAnalyticalPipeline:
         business_id: UUID,
         as_of_date: Optional[date] = None,
         run_id: Optional[UUID] = None,
+        active_submodules: Optional[list[str]] = None,
     ) -> UnderwritingPipelineResult:
         """
         Asynchronously loads the complete financial graph for the company from PostgreSQL,
-        compiles the typed CompanyDataSnapshot, executes the 9 analytical submodules,
+        compiles the typed CompanyDataSnapshot, executes the analytical submodules,
         computes investment attractiveness scoring, and updates analysis_runs and logs.
 
         :param db: Active Database connection instance.
         :param business_id: UUID of the company to analyze.
         :param as_of_date: Optional cutoff evaluation date (defaults to date.today()).
         :param run_id: Optional analysis run UUID for real-time telemetry logging.
+        :param active_submodules: Optional list of submodule codes to execute. If provided,
+                                  omitted submodules are marked SKIPPED/DATA_ABSENT.
         :return: UnderwritingPipelineResult containing feature vector and scoring result.
         """
         effective_date = as_of_date or date.today()
@@ -232,14 +245,10 @@ class UnderwritingAnalyticalPipeline:
 
         if run_id is not None:
             # Check if run exists in analysis_runs before emitting logs to prevent FK violation
-            check_rep = await db.get_records_from_analysis_runs(
-                find_only_first=True, run_id=run_id
-            )
+            check_rep = await db.get_records_from_analysis_runs(find_only_first=True, run_id=run_id)
             if check_rep.success and check_rep.data:
                 is_run_registered = True
-                await db.update_records_in_analysis_runs(
-                    updates={"status": "PROCESSING"}, run_id=run_id
-                )
+                await db.update_records_in_analysis_runs(updates={"status": "PROCESSING"}, run_id=run_id)
                 await db.add_record_to_analysis_logs(
                     run_id=run_id,
                     severity="INFO",
@@ -249,9 +258,7 @@ class UnderwritingAnalyticalPipeline:
 
         try:
             loader = CompanyDataLoader(db)
-            snapshot = await loader.load_snapshot(
-                business_id=business_id, as_of_date=effective_date
-            )
+            snapshot = await loader.load_snapshot(business_id=business_id, as_of_date=effective_date)
 
             if is_run_registered and run_id is not None:
                 await db.add_record_to_analysis_logs(
@@ -262,7 +269,9 @@ class UnderwritingAnalyticalPipeline:
                 )
 
             pipeline_result = self.run_analysis(
-                snapshot=snapshot, as_of_date=effective_date
+                snapshot=snapshot,
+                as_of_date=effective_date,
+                active_submodules=active_submodules,
             )
 
             if is_run_registered and run_id is not None:
@@ -283,8 +292,7 @@ class UnderwritingAnalyticalPipeline:
 
             # Determine status: COMPLETED if all 9 SUCCESS, else DEGRADED if any DATA_ABSENT/ERROR
             has_incomplete = any(
-                res.status != EvaluationStatus.SUCCESS
-                for res in pipeline_result.submodule_results.values()
+                res.status != EvaluationStatus.SUCCESS for res in pipeline_result.submodule_results.values()
             )
             final_status = "DEGRADED" if has_incomplete else "COMPLETED"
 
@@ -292,11 +300,7 @@ class UnderwritingAnalyticalPipeline:
                 # Sanitize raw_indices_payload: strip NaN and convert np.float64 to float or None
                 raw_indices: dict[str, float | None] = {}
                 for idx, feat_name in enumerate(CreditScoringEngine.FEATURE_NAMES):
-                    val = (
-                        pipeline_result.feature_vector[idx]
-                        if idx < len(pipeline_result.feature_vector)
-                        else None
-                    )
+                    val = pipeline_result.feature_vector[idx] if idx < len(pipeline_result.feature_vector) else None
                     if val is not None:
                         try:
                             f_val = float(val)
@@ -310,19 +314,11 @@ class UnderwritingAnalyticalPipeline:
                 sub_reports = [
                     {
                         "submodule_code": res.submodule_code,
-                        "status": (
-                            res.status.value
-                            if hasattr(res.status, "value")
-                            else str(res.status)
-                        ),
+                        "status": (res.status.value if hasattr(res.status, "value") else str(res.status)),
                         "impact_weight": float(res.impact_weight),
                         "verdict": str(res.verdict),
                         "indices": {
-                            ik: (
-                                None
-                                if iv is None or math.isnan(float(iv))
-                                else float(iv)
-                            )
+                            ik: (None if iv is None or math.isnan(float(iv)) else float(iv))
                             for ik, iv in res.indices.items()
                         },
                         "summary": str(res.summary),
@@ -332,9 +328,7 @@ class UnderwritingAnalyticalPipeline:
                 ]
 
                 # Update analysis_runs with complete dossier and metrics
-                score_dec = Decimal(
-                    str(round(scoring_result.investment_attractiveness_score, 2))
-                )
+                score_dec = Decimal(str(round(scoring_result.investment_attractiveness_score, 2)))
                 await db.update_records_in_analysis_runs(
                     updates={
                         "status": final_status,
@@ -388,9 +382,7 @@ class UnderwritingAnalyticalPipeline:
             raise exc
 
 
-def run_full_ml_analysis(
-    snapshot: Any, as_of_date: date | None = None
-) -> UnderwritingPipelineResult:
+def run_full_ml_analysis(snapshot: Any, as_of_date: date | None = None) -> UnderwritingPipelineResult:
     """Convenience helper function to execute full pipeline analysis on a snapshot."""
     pipeline = UnderwritingAnalyticalPipeline()
     return pipeline.run_analysis(snapshot, as_of_date=as_of_date)
@@ -401,11 +393,16 @@ async def run_analysis_from_db(
     business_id: UUID,
     as_of_date: Optional[date] = None,
     run_id: Optional[UUID] = None,
+    active_submodules: Optional[list[str]] = None,
 ) -> UnderwritingPipelineResult:
     """Convenience async helper to load data from database and execute full pipeline analysis."""
     pipeline = UnderwritingAnalyticalPipeline()
     return await pipeline.run_analysis_from_db(
-        db=db, business_id=business_id, as_of_date=as_of_date, run_id=run_id
+        db=db,
+        business_id=business_id,
+        as_of_date=as_of_date,
+        run_id=run_id,
+        active_submodules=active_submodules,
     )
 
 
@@ -416,4 +413,3 @@ __all__ = [
     "run_analysis_from_db",
     "run_full_ml_analysis",
 ]
-

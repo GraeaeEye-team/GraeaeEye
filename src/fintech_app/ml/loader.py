@@ -6,7 +6,7 @@ Bridges PostgreSQL data layer (Database) and deterministic ML submodules via Com
 from __future__ import annotations
 
 import asyncio
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 import logging
 from typing import Any, List, Optional
@@ -137,14 +137,10 @@ class CompanyDataLoader:
             industry_code=str(row.get("industry_code", "")),
             registration_date=reg_date,
             total_board_seats=self._to_int(row.get("total_board_seats"), 1),
-            independent_directors_count=self._to_int(
-                row.get("independent_directors_count"), 0
-            ),
+            independent_directors_count=self._to_int(row.get("independent_directors_count"), 0),
         )
 
-    def _parse_shareholders(
-        self, data: Any, fallback_business_id: UUID
-    ) -> List[ShareholderRecord]:
+    def _parse_shareholders(self, data: Any, fallback_business_id: UUID) -> List[ShareholderRecord]:
         if not data:
             return []
         raw_list = data if isinstance(data, list) else [data]
@@ -158,54 +154,36 @@ class CompanyDataLoader:
                     ownership_id=self._to_uuid(r.get("ownership_id")) or uuid4(),
                     business_id=biz_id,
                     shareholder_name=str(r.get("shareholder_name", "")),
-                    equity_percentage=self._to_decimal(
-                        r.get("equity_percentage"), Decimal("0.00")
-                    ),
-                    is_management_member=self._to_bool(
-                        r.get("is_management_member"), False
-                    ),
+                    equity_percentage=self._to_decimal(r.get("equity_percentage"), Decimal("0.00")),
+                    is_management_member=self._to_bool(r.get("is_management_member"), False),
                 )
             )
         return records
 
-    def _parse_web_reputation(
-        self, data: Any, fallback_business_id: UUID
-    ) -> Optional[WebReputationRecord]:
+    def _parse_web_reputation(self, data: Any, fallback_business_id: UUID) -> Optional[WebReputationRecord]:
         if not data:
             return None
         r = data[0] if isinstance(data, list) else data
         if not isinstance(r, dict):
             return None
         biz_id = self._to_uuid(r.get("business_id")) or fallback_business_id
-        scan_ts = self._to_datetime(r.get("scan_timestamp")) or datetime.now()
-        news_score = (
-            self._to_decimal(r["news_sentiment_score"])
-            if r.get("news_sentiment_score") is not None
-            else None
-        )
+        scan_ts = self._to_datetime(r.get("scan_timestamp")) or datetime.now(timezone.utc)
+        news_score = self._to_decimal(r["news_sentiment_score"]) if r.get("news_sentiment_score") is not None else None
         traffic = (
-            self._to_int(r["web_traffic_monthly_visits"])
-            if r.get("web_traffic_monthly_visits") is not None
-            else None
+            self._to_int(r["web_traffic_monthly_visits"]) if r.get("web_traffic_monthly_visits") is not None else None
         )
         return WebReputationRecord(
             record_id=self._to_uuid(r.get("record_id")) or uuid4(),
             business_id=biz_id,
             scan_timestamp=scan_ts,
             active_lawsuits_count=self._to_int(r.get("active_lawsuits_count"), 0),
-            total_lawsuit_claims_amount=self._to_decimal(
-                r.get("total_lawsuit_claims_amount"), Decimal("0.00")
-            ),
-            is_in_sanctions_list=self._to_bool(
-                r.get("is_in_sanctions_list"), False
-            ),
+            total_lawsuit_claims_amount=self._to_decimal(r.get("total_lawsuit_claims_amount"), Decimal("0.00")),
+            is_in_sanctions_list=self._to_bool(r.get("is_in_sanctions_list"), False),
             news_sentiment_score=news_score,
             web_traffic_monthly_visits=traffic,
         )
 
-    def _parse_macro_sector_metrics(
-        self, data: Any, expected_industry_code: str
-    ) -> Optional[MacroSectorMetricRecord]:
+    def _parse_macro_sector_metrics(self, data: Any, expected_industry_code: str) -> Optional[MacroSectorMetricRecord]:
         if not data:
             return None
         r = data[0] if isinstance(data, list) else data
@@ -215,18 +193,12 @@ class CompanyDataLoader:
             metric_id=self._to_uuid(r.get("metric_id")) or uuid4(),
             industry_code=str(r.get("industry_code", expected_industry_code)),
             reference_date=self._to_date(r.get("reference_date")) or date.today(),
-            sector_growth_rate_yoy=self._to_decimal(
-                r.get("sector_growth_rate_yoy"), Decimal("0.00")
-            ),
-            sector_default_rate=self._to_decimal(
-                r.get("sector_default_rate"), Decimal("0.00")
-            ),
+            sector_growth_rate_yoy=self._to_decimal(r.get("sector_growth_rate_yoy"), Decimal("0.00")),
+            sector_default_rate=self._to_decimal(r.get("sector_default_rate"), Decimal("0.00")),
             risk_outlook_score=self._to_int(r.get("risk_outlook_score"), 5),
         )
 
-    def _parse_counterparties(
-        self, data: Any, fallback_business_id: UUID
-    ) -> List[CounterpartyRecord]:
+    def _parse_counterparties(self, data: Any, fallback_business_id: UUID) -> List[CounterpartyRecord]:
         if not data:
             return []
         raw_list = data if isinstance(data, list) else [data]
@@ -251,9 +223,7 @@ class CompanyDataLoader:
             )
         return records
 
-    def _parse_invoices(
-        self, data: Any, fallback_business_id: UUID
-    ) -> List[InvoiceRecord]:
+    def _parse_invoices(self, data: Any, fallback_business_id: UUID) -> List[InvoiceRecord]:
         if not data:
             return []
         raw_list = data if isinstance(data, list) else [data]
@@ -284,9 +254,7 @@ class CompanyDataLoader:
                     business_id=biz_id,
                     counterparty_id=cp_id,
                     invoice_type=inv_type,
-                    gross_amount=self._to_decimal(
-                        r.get("gross_amount"), Decimal("0.00")
-                    ),
+                    gross_amount=self._to_decimal(r.get("gross_amount"), Decimal("0.00")),
                     issue_date=self._to_date(r.get("issue_date")) or date.today(),
                     due_date=self._to_date(r.get("due_date")) or date.today(),
                     status=status,
@@ -295,9 +263,7 @@ class CompanyDataLoader:
             )
         return records
 
-    def _parse_bank_accounts(
-        self, data: Any, fallback_business_id: UUID
-    ) -> List[BankAccountRecord]:
+    def _parse_bank_accounts(self, data: Any, fallback_business_id: UUID) -> List[BankAccountRecord]:
         if not data:
             return []
         raw_list = data if isinstance(data, list) else [data]
@@ -311,19 +277,13 @@ class CompanyDataLoader:
                     account_id=self._to_uuid(r.get("account_id")) or uuid4(),
                     business_id=biz_id,
                     currency=str(r.get("currency", "MDL")),
-                    current_balance=self._to_decimal(
-                        r.get("current_balance"), Decimal("0.00")
-                    ),
-                    overdraft_limit=self._to_decimal(
-                        r.get("overdraft_limit"), Decimal("0.00")
-                    ),
+                    current_balance=self._to_decimal(r.get("current_balance"), Decimal("0.00")),
+                    overdraft_limit=self._to_decimal(r.get("overdraft_limit"), Decimal("0.00")),
                 )
             )
         return records
 
-    def _parse_transactions(
-        self, data: Any, fallback_business_id: UUID
-    ) -> List[TransactionRecord]:
+    def _parse_transactions(self, data: Any, fallback_business_id: UUID) -> List[TransactionRecord]:
         if not data:
             return []
         raw_list = data if isinstance(data, list) else [data]
@@ -363,7 +323,7 @@ class CompanyDataLoader:
                     transaction_id=self._to_uuid(r.get("transaction_id")) or uuid4(),
                     business_id=biz_id,
                     account_id=acc_id,
-                    timestamp=self._to_datetime(r.get("timestamp")) or datetime.now(),
+                    timestamp=self._to_datetime(r.get("timestamp")) or datetime.now(timezone.utc),
                     amount=self._to_decimal(r.get("amount"), Decimal("0.00")),
                     direction=direction,
                     category=category,
@@ -374,9 +334,7 @@ class CompanyDataLoader:
             )
         return records
 
-    def _parse_credit_obligations(
-        self, data: Any, fallback_business_id: UUID
-    ) -> List[CreditObligationRecord]:
+    def _parse_credit_obligations(self, data: Any, fallback_business_id: UUID) -> List[CreditObligationRecord]:
         if not data:
             return []
         raw_list = data if isinstance(data, list) else [data]
@@ -397,20 +355,12 @@ class CompanyDataLoader:
                     business_id=biz_id,
                     lender_name=str(r.get("lender_name", "")),
                     facility_type=fac_type,
-                    principal_amount=self._to_decimal(
-                        r.get("principal_amount"), Decimal("0.00")
-                    ),
-                    outstanding_balance=self._to_decimal(
-                        r.get("outstanding_balance"), Decimal("0.00")
-                    ),
-                    monthly_payment=self._to_decimal(
-                        r.get("monthly_payment"), Decimal("0.00")
-                    ),
+                    principal_amount=self._to_decimal(r.get("principal_amount"), Decimal("0.00")),
+                    outstanding_balance=self._to_decimal(r.get("outstanding_balance"), Decimal("0.00")),
+                    monthly_payment=self._to_decimal(r.get("monthly_payment"), Decimal("0.00")),
                     past_due_30d_count=self._to_int(r.get("past_due_30d_count"), 0),
                     past_due_90d_count=self._to_int(r.get("past_due_90d_count"), 0),
-                    historical_defaults_count=self._to_int(
-                        r.get("historical_defaults_count"), 0
-                    ),
+                    historical_defaults_count=self._to_int(r.get("historical_defaults_count"), 0),
                 )
             )
         return records
@@ -433,11 +383,7 @@ class CompanyDataLoader:
         :raises ValueError: If company record does not exist in businesses table.
         """
         effective_date = as_of_date or date.today()
-        effective_biz_id = (
-            business_id
-            if isinstance(business_id, UUID)
-            else UUID(str(business_id))
-        )
+        effective_biz_id = business_id if isinstance(business_id, UUID) else UUID(str(business_id))
 
         logger.info(
             "Initiating financial snapshot load for business %s as of %s",
@@ -446,9 +392,7 @@ class CompanyDataLoader:
         )
 
         # Step 1: Fetch core business identity
-        biz_report = await self.db.get_records_from_businesses(
-            find_only_first=True, business_id=effective_biz_id
-        )
+        biz_report = await self.db.get_records_from_businesses(find_only_first=True, business_id=effective_biz_id)
         if not biz_report.success or not biz_report.data:
             logger.error(
                 "Business record not found for id %s (error: %s)",
@@ -457,11 +401,7 @@ class CompanyDataLoader:
             )
             raise ValueError(f"Business not found: {effective_biz_id}")
 
-        biz_data = (
-            biz_report.data[0]
-            if isinstance(biz_report.data, list)
-            else biz_report.data
-        )
+        biz_data = biz_report.data[0] if isinstance(biz_report.data, list) else biz_report.data
         business_record = self._parse_business(biz_data, effective_biz_id)
 
         # Step 2: Concurrently query all 7 related business entities
@@ -475,9 +415,7 @@ class CompanyDataLoader:
             co_rep,
         ) = await asyncio.gather(
             self.db.get_records_from_shareholders(business_id=effective_biz_id),
-            self.db.get_records_from_web_reputation(
-                find_only_first=True, business_id=effective_biz_id
-            ),
+            self.db.get_records_from_web_reputation(find_only_first=True, business_id=effective_biz_id),
             self.db.get_records_from_counterparties(business_id=effective_biz_id),
             self.db.get_records_from_invoices(business_id=effective_biz_id),
             self.db.get_records_from_bank_accounts(business_id=effective_biz_id),
@@ -493,10 +431,18 @@ class CompanyDataLoader:
                 find_only_first=True,
                 industry_code=clean_ind,
             )
-            if macro_rep.success and macro_rep.data:
-                macro_metrics = self._parse_macro_sector_metrics(
-                    macro_rep.data, clean_ind
+            # Fallback to "DEFAULT" or first available industry benchmark if exact code not found
+            if not (macro_rep.success and macro_rep.data):
+                macro_rep = await self.db.get_records_from_macro_sector_metrics(
+                    find_only_first=True,
+                    industry_code="DEFAULT",
                 )
+            if not (macro_rep.success and macro_rep.data):
+                macro_rep = await self.db.get_records_from_macro_sector_metrics(
+                    find_only_first=True,
+                )
+            if macro_rep.success and macro_rep.data:
+                macro_metrics = self._parse_macro_sector_metrics(macro_rep.data, clean_ind)
             else:
                 logger.debug(
                     "No macro sector metrics found for industry %s",
@@ -504,41 +450,13 @@ class CompanyDataLoader:
                 )
 
         # Step 4: Parse records with graceful degradation
-        shareholders = (
-            self._parse_shareholders(sh_rep.data, effective_biz_id)
-            if sh_rep.success
-            else []
-        )
-        web_reputation = (
-            self._parse_web_reputation(web_rep.data, effective_biz_id)
-            if web_rep.success
-            else None
-        )
-        counterparties = (
-            self._parse_counterparties(cp_rep.data, effective_biz_id)
-            if cp_rep.success
-            else []
-        )
-        invoices = (
-            self._parse_invoices(inv_rep.data, effective_biz_id)
-            if inv_rep.success
-            else []
-        )
-        bank_accounts = (
-            self._parse_bank_accounts(ba_rep.data, effective_biz_id)
-            if ba_rep.success
-            else []
-        )
-        transactions = (
-            self._parse_transactions(tx_rep.data, effective_biz_id)
-            if tx_rep.success
-            else []
-        )
-        credit_obligations = (
-            self._parse_credit_obligations(co_rep.data, effective_biz_id)
-            if co_rep.success
-            else []
-        )
+        shareholders = self._parse_shareholders(sh_rep.data, effective_biz_id) if sh_rep.success else []
+        web_reputation = self._parse_web_reputation(web_rep.data, effective_biz_id) if web_rep.success else None
+        counterparties = self._parse_counterparties(cp_rep.data, effective_biz_id) if cp_rep.success else []
+        invoices = self._parse_invoices(inv_rep.data, effective_biz_id) if inv_rep.success else []
+        bank_accounts = self._parse_bank_accounts(ba_rep.data, effective_biz_id) if ba_rep.success else []
+        transactions = self._parse_transactions(tx_rep.data, effective_biz_id) if tx_rep.success else []
+        credit_obligations = self._parse_credit_obligations(co_rep.data, effective_biz_id) if co_rep.success else []
 
         snapshot = CompanyDataSnapshot(
             business=business_record,
@@ -574,4 +492,3 @@ class CompanyDataLoader:
 __all__ = [
     "CompanyDataLoader",
 ]
-

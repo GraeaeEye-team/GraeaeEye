@@ -3,6 +3,7 @@ Submodule 4.3: Macro & Sector Risk Evaluator (MSR).
 Evaluates industry YoY growth rate, baseline default rates, and macroeconomic risk outlook
 to assess systemic sector-level risks.
 """
+
 from typing import Any
 
 from .base import (
@@ -24,8 +25,7 @@ class MacroSectorRiskEvaluator(BaseSubmoduleEvaluator):
 
     def evaluate(self, snapshot: Any) -> SubmoduleResult:
         macro = (
-            getattr(snapshot, "macro_metrics", None)
-            or getattr(snapshot, "macro_sector_metrics", None)
+            getattr(snapshot, "macro_metrics", None) or getattr(snapshot, "macro_sector_metrics", None)
             if snapshot
             else None
         )
@@ -43,9 +43,7 @@ class MacroSectorRiskEvaluator(BaseSubmoduleEvaluator):
                 },
                 summary="No macro sector metrics data present.",
                 diagnostic_report=(
-                    "[SUBMODULE 4.3: MACRO & SECTOR RISK]\n"
-                    "STATUS: DATA_ABSENT\n"
-                    "VERDICT: DATA_ABSENT"
+                    "[SUBMODULE 4.3: MACRO & SECTOR RISK]\n" "STATUS: DATA_ABSENT\n" "VERDICT: DATA_ABSENT"
                 ),
             )
 
@@ -59,9 +57,7 @@ class MacroSectorRiskEvaluator(BaseSubmoduleEvaluator):
         macro_stability = clamp(100.0 - ((outlook_score - 1.0) * 11.11))
 
         # 2. Consolidated Sector Vitality Index
-        vitality_idx = clamp(
-            (0.40 * growth_score) + (0.35 * default_safety) + (0.25 * macro_stability)
-        )
+        vitality_idx = clamp((0.40 * growth_score) + (0.35 * default_safety) + (0.25 * macro_stability))
 
         # 3. Verdict determination
         if vitality_idx >= 70.0:
