@@ -1,6 +1,8 @@
 @media (prefers-color-scheme: light) {
     :root:not([data-theme="dark"]) {
         --clr-blue: #ace;
+        --clr-green: #cea;
+        --clr-white: #fff;
         --clr-black: #000;
         --clr-bg: #fff;
         --clr-fg: #000;
@@ -9,6 +11,8 @@
 @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
         --clr-blue: #ace;
+        --clr-green: #cea;
+        --clr-white: #fff;
         --clr-black: #000;
         --clr-bg: #000;
         --clr-fg: #fff;
@@ -17,6 +21,8 @@
 
 :root[data-theme="dark"] {
     --clr-blue: #ace;
+    --clr-green: #cea;
+    --clr-white: #fff;
     --clr-black: #000;
     --clr-bg: #000;
     --clr-fg: #fff;
@@ -24,6 +30,8 @@
 
 :root[data-theme="light"] {
     --clr-blue: #ace;
+    --clr-green: #cea;
+    --clr-white: #fff;
     --clr-black: #000;
     --clr-bg: #fff;
     --clr-fg: #000;
@@ -36,11 +44,11 @@ body {
 }
 
 .splash {
-    background: var(--clr-blue);
+    background: repeat 0.1em 0.1em url(/static/favicon.ico) var(--clr-blue);
+    background-size: 0.5em 0.5em;
     color: var(--clr-black);
-}
-
-.splash h1 {
+    text-shadow: 0 0 0.1em var(--clr-blue);
+    text-align: center;
     margin: 0;
 }
 
@@ -60,4 +68,9 @@ body {
 
 .iconic {
     font-size: 1.5em;
+}
+
+.error {
+     color: red;
+     margin-top: 0.5em;
 }
