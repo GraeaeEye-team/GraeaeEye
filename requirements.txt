@@ -29,3 +29,6 @@ requests>=2.31.0
 # Document Ingestion, Parsing & Quality Tooling
 openpyxl>=3.1.2
 ruff>=0.3.2,<0.4.0
+
+# Development & Testing Tooling
+pytest>=8.0.0,<9.0.0
