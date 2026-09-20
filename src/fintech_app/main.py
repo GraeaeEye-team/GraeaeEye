@@ -16,7 +16,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+
 from .core.config import settings
+import inspect
 from .api.router import api_router
 
 logger = logging.getLogger("fintech_app")
@@ -36,18 +38,30 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Initializing GraeaeEye API startup lifecycle...")
 
     if not settings.use_mock_engine:
-        try:
-            from .db.connection import Database
 
-            if Database is not None:
-                db_inst = Database.get_instance()
+        if hasattr(app.state, "db") and app.state.db is not None:
+            db_inst = app.state.db
+            if hasattr(db_inst, "open") and not getattr(db_inst, "is_open", False):
+                await db_inst.open()
+            db_pool = db_inst
+            logger.info("Injected database instance opened successfully.")
+        else:
+            try:
+                from .db.mock_connection import MockDatabase
+
+                db_inst = MockDatabase.get_instance()
                 await db_inst.open()
                 db_pool = db_inst
-                logger.info("Production database pool opened successfully.")
-        except Exception as exc:
-            logger.warning("Database initialization failed: %s. Falling back to mock engine.", exc)
+                app.state.db = db_pool
+                logger.info("MockDatabase opened successfully for in-process execution.")
+            except Exception as exc:
+                logger.warning("Database initialization failed: %s. DB remains unavailable.", exc)
+                db_pool = None
+                app.state.db = None
     else:
         logger.info("Operating in mock engine mode (use_mock_engine=True).")
+        if not hasattr(app.state, "db"):
+            app.state.db = None
 
     yield
 
@@ -55,12 +69,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if db_pool is not None:
         try:
             if hasattr(db_pool, "close"):
-                await db_pool.close()
+                res = db_pool.close()
+                if inspect.isawaitable(res):
+                    await res
             elif hasattr(db_pool, "aclose"):
                 await db_pool.aclose()
             logger.info("Database pool closed successfully.")
         except Exception as exc:
             logger.error("Error encountered while closing database pool: %s", exc)
+        finally:
+            db_pool = None
 
 
 app = FastAPI(

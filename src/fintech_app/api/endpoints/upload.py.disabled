@@ -1,7 +1,6 @@
-"""
-API-эндпоинты загрузки банковских выписок и финансовых документов.
-Принимает файлы Excel/CSV, запускает AI-маппинг и передает данные в хранилище PostgreSQL.
-"""
+# ARCHIVED: stub from Phase 0 cash-flow concept, not used in Phase 1-2
+# Kept for historical reference only. Not registered in router.
+
 from fastapi import APIRouter, File, UploadFile
 
 router = APIRouter()

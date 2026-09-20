@@ -1,15 +1,20 @@
 """
-Authentication Endpoints for the GraeaeEye API (Phase 1).
+Authentication Endpoints for the GraeaeEye API (Gate 4).
 
-Provides mock login and registration contracts setting secure session cookies.
-No real Argon2/JWT signing in Phase 1 (deferred to Phase 2).
-Tokens are strictly barred from response bodies and query strings (Rule P9).
+Provides:
+- User token authentication (/auth/token) via Argon2id verification and HS256 JWT session cookies.
+- User registration (/auth/register) with field validation, email uniqueness enforcement, and DAL persistence.
+- Deterministic mock fallback when USE_MOCK_ENGINE=true or database connection is unavailable.
+- Strict security adherence: passwords/hashes never logged, tokens never in body (Rule P9).
 """
 
+from __future__ import annotations
+
 import logging
+from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
 from ..schemas import (
     ErrorResponse,
@@ -18,11 +23,25 @@ from ..schemas import (
     UserResponse,
 )
 
-logger = logging.getLogger(__name__)
+from ..dependencies import get_db
+from ..schemas import (
+    ErrorResponse,
+    UserLoginRequest,
+    UserRegisterRequest,
+    UserResponse,
+)
+from ...auth.security import (
+    create_session_token,
+    hash_password,
+    verify_password,
+)
+from ...core.config import settings
+
+logger = logging.getLogger("fintech_app.api.auth")
 
 router = APIRouter()
 
-# Deterministic mock user fixture for Phase 1 testing
+# Deterministic mock user fixture for Phase 1 / mock testing
 MOCK_USER_FIXTURE = {
     "user_id": UUID("00000000-0000-0000-0000-000000000001"),
     "email": "analyst@graeae.eye",
@@ -47,24 +66,80 @@ MOCK_SESSION_TOKEN = "mock-session-token-phase1-secret"
     summary="User token authentication",
     description="Primary auth endpoint (Spec v2.0 §3.1). Authenticates user and attaches an HttpOnly, Secure session cookie.",
 )
-async def login(credentials: UserLoginRequest, response: Response) -> UserResponse:
-    """Authenticates credentials against the mock fixture and issues an HttpOnly cookie."""
-    # Strict exact-match validation against the mock fixture
-    if (
-        credentials.email != MOCK_USER_FIXTURE["email"]
-        or credentials.password != MOCK_USER_FIXTURE["password"]
-    ):
+async def login(
+    credentials: UserLoginRequest,
+    response: Response,
+    db: Any = Depends(get_db),
+) -> UserResponse:
+    """Authenticates credentials against DAL or mock fixture and issues an HttpOnly cookie."""
+    # 1. Fallback to mock behavior if database unavailable or mock mode enabled
+    if db is None or settings.use_mock_engine:
+        if (
+            credentials.email != MOCK_USER_FIXTURE["email"]
+            or credentials.password != MOCK_USER_FIXTURE["password"]
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"detail": "Invalid email or password.", "code": "INVALID_CREDENTIALS"},
+            )
+
+        logger.info("User login successful (mock) for email '%s'", credentials.email)
+
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value=MOCK_SESSION_TOKEN,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+
+        return UserResponse(
+            user_id=MOCK_USER_FIXTURE["user_id"],
+            email=credentials.email,
+            full_name=MOCK_USER_FIXTURE["full_name"],
+            role=MOCK_USER_FIXTURE["role"],
+            is_active=True,
+        )
+
+    # 2. Real Authentication Path via Data Access Layer
+    user_rep = await db.get_records_from_users(find_only_first=True, email=credentials.email)
+    if not user_rep.success or not user_rep.data:
+        logger.warning("Authentication failed: user '%s' not found", credentials.email)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"detail": "Invalid email or password.", "code": "INVALID_CREDENTIALS"},
         )
 
-    logger.info("User login successful for email '%s'", credentials.email)
+    user = user_rep.data
+    stored_hash = user.get("password_hash", "")
+    if not verify_password(credentials.password, stored_hash):
+        logger.warning("Authentication failed: password mismatch for user '%s'", credentials.email)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"detail": "Invalid email or password.", "code": "INVALID_CREDENTIALS"},
+        )
 
-    # Set secure session cookie per Rule P9 (HttpOnly; Secure; SameSite=Lax)
+    if not user.get("is_active", True):
+        logger.warning("Authentication rejected: inactive account for user '%s'", credentials.email)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"detail": "User account is inactive.", "code": "INVALID_CREDENTIALS"},
+        )
+
+    user_id = UUID(str(user["user_id"]))
+    email = str(user["email"])
+    full_name = str(user["full_name"])
+    role = str(user.get("role", "ANALYST"))
+
+    # Issue signed JWT session token
+    jwt_token = create_session_token({"sub": str(user_id), "email": email, "role": role})
+
+    logger.info("User login successful for email '%s' (user_id: %s)", email, user_id)
+
     response.set_cookie(
         key=COOKIE_NAME,
-        value=MOCK_SESSION_TOKEN,
+        value=jwt_token,
         httponly=True,
         secure=True,
         samesite="lax",
@@ -72,10 +147,10 @@ async def login(credentials: UserLoginRequest, response: Response) -> UserRespon
     )
 
     return UserResponse(
-        user_id=MOCK_USER_FIXTURE["user_id"],
-        email=credentials.email,
-        full_name=MOCK_USER_FIXTURE["full_name"],
-        role=MOCK_USER_FIXTURE["role"],
+        user_id=user_id,
+        email=email,
+        full_name=full_name,
+        role=role,
         is_active=True,
     )
 
@@ -86,19 +161,105 @@ async def login(credentials: UserLoginRequest, response: Response) -> UserRespon
     status_code=status.HTTP_201_CREATED,
     responses={
         201: {"model": UserResponse, "description": "User account created."},
+        409: {"model": ErrorResponse, "description": "Email already registered."},
         422: {"model": ErrorResponse, "description": "Validation error."},
     },
     summary="User registration",
     description="Registers a new user and attaches an HttpOnly, Secure session cookie.",
 )
-async def register(payload: UserRegisterRequest, response: Response) -> UserResponse:
-    """Creates a user account stub in Phase 1 and establishes a session cookie."""
+async def register(
+    payload: UserRegisterRequest,
+    response: Response,
+    db: Any = Depends(get_db),
+) -> UserResponse:
+    """Validates user payload, hashes password, records in DAL, and establishes a session."""
+    # 1. Input Validation (email format, password >= 8 chars, full_name non-empty)
+    email_clean = payload.email.strip()
+    if not email_clean or "@" not in email_clean or "." not in email_clean.split("@")[-1]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"detail": "Invalid email address format.", "code": "VALIDATION_ERROR"},
+        )
+
+    if len(payload.password) < 8:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "detail": "Password must be at least 8 characters in length.",
+                "code": "VALIDATION_ERROR",
+            },
+        )
+
+    name_clean = payload.full_name.strip()
+    if not name_clean:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"detail": "Full name cannot be empty.", "code": "VALIDATION_ERROR"},
+        )
+
+    # 2. Mock Fallback
+    if db is None or settings.use_mock_engine:
+        new_user_id = uuid4()
+        logger.info("Mock registration processed for email '%s'", email_clean)
+
+        response.set_cookie(
+            key=COOKIE_NAME,
+            value=MOCK_SESSION_TOKEN,
+            httponly=True,
+            secure=True,
+            samesite="lax",
+            path="/",
+        )
+
+        return UserResponse(
+            user_id=new_user_id,
+            email=email_clean,
+            full_name=name_clean,
+            role="ANALYST",
+            is_active=True,
+        )
+
+    # 3. Real DAL Registration Path
+    # Check email uniqueness
+    existing_rep = await db.get_records_from_users(find_only_first=True, email=email_clean)
+    if existing_rep.success and existing_rep.data:
+        logger.warning("Registration rejected: email '%s' already exists", email_clean)
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detail": f"User with email '{email_clean}' already exists.",
+                "code": "EMAIL_EXISTS",
+            },
+        )
+
+    # Hash password via Argon2id (never logged)
+    password_hash = hash_password(payload.password)
     new_user_id = uuid4()
-    logger.info("User registered with email '%s'", payload.email)
+    role = "ANALYST"
+
+    add_rep = await db.add_record_to_users(
+        user_id=new_user_id,
+        email=email_clean,
+        password_hash=password_hash,
+        full_name=name_clean,
+        role=role,
+        is_active=True,
+    )
+    if not add_rep.success:
+        logger.error("Failed to insert user record into DAL for '%s'", email_clean)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail={"detail": "Internal error during user registration.", "code": "INTERNAL_ERROR"},
+        )
+
+    logger.info("User successfully registered: '%s' (user_id: %s)", email_clean, new_user_id)
+
+    # Issue signed session JWT
+    jwt_token = create_session_token({"sub": str(new_user_id), "email": email_clean, "role": role})
 
     response.set_cookie(
         key=COOKIE_NAME,
-        value=MOCK_SESSION_TOKEN,
+        value=jwt_token,
         httponly=True,
         secure=True,
         samesite="lax",
@@ -107,8 +268,8 @@ async def register(payload: UserRegisterRequest, response: Response) -> UserResp
 
     return UserResponse(
         user_id=new_user_id,
-        email=payload.email,
-        full_name=payload.full_name,
-        role="ANALYST",
+        email=email_clean,
+        full_name=name_clean,
+        role=role,
         is_active=True,
     )

@@ -1,57 +1,152 @@
 """
 API Dependencies for FastAPI routes.
 
-Provides defensive dependency injection for the database abstraction layer (DAL)
-and Phase 1 mock session authentication.
+Provides:
+- Database abstraction layer (DAL) dependency injection (get_db).
+- Session token authentication (get_current_user) via JWT decoding and DAL lookup.
+- Fallback mock principal when USE_MOCK_ENGINE=true or database is absent.
 """
 
-from typing import AsyncGenerator, Generator, Optional
+from __future__ import annotations
+
+import logging
+from typing import Any, AsyncGenerator, Generator, Optional
 from uuid import UUID
 
-from fastapi import HTTPException, Request
+
+from fastapi import HTTPException, Request, status
+import jwt
 
 from .schemas import CurrentUser
+from ..auth.security import decode_session_token
+from ..core.config import settings
 
-from ..db.connection import Database
+logger = logging.getLogger("fintech_app.api.dependencies")
+
+MOCK_USER_PRINCIPAL = CurrentUser(
+    user_id=UUID("00000000-0000-0000-0000-000000000001"),
+    email="analyst@graeae.eye",
+    full_name="Graeae Senior Underwriter",
+    role="ANALYST",
+)
 
 
-# Backward compatibility symbol
 def get_db_connection() -> Generator[None, None, None]:
     """Preserved legacy stub for database connection generator."""
     yield None
 
 
-async def get_db() -> AsyncGenerator[Optional[object], None]:
+async def get_db(request: Request) -> AsyncGenerator[Optional[object], None]:
     """
-    Yields the active Database instance if available, or None in Phase 1 mock mode.
+    Yields the active Database / MockDatabase instance if available, or None.
 
-    Defensive against missing database layer or configuration.
+    Defensive against missing database layer, connection failures, or offline mock mode.
     """
-    # In Phase 1 mock mode, database persistence is bypassed
-    yield None
+    db = None
+    if hasattr(request, "app") and hasattr(request.app, "state"):
+        db = getattr(request.app.state, "db", None)
+
+    if db is None:
+        try:
+            from fintech_app.main import db_pool
+            db = db_pool
+        except Exception:
+            db = None
+
+    yield db
 
 
 async def get_current_user(request: Request) -> CurrentUser:
     """
     Authenticates the incoming request via secure HttpOnly session cookie.
 
-    Phase 1 Mock Implementation:
-    - Reads session cookie ONLY (Rule P9: no tokens in body or query string).
-    - Returns a deterministic CurrentUser DTO when present.
-    - Missing/invalid cookie raises HTTP 401 with standard error envelope (code: UNAUTHORIZED).
+    - Reads 'session_token' cookie. Missing -> 401 UNAUTHORIZED.
+    - If db is None or settings.use_mock_engine: returns mock principal.
+    - If db is present: validates JWT signature & expiration, queries users table by sub (UUID).
+      Raises 401 UNAUTHORIZED on invalid token, expired token, or nonexistent user.
     """
     session_token = request.cookies.get("session_token")
 
     if not session_token:
         raise HTTPException(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"detail": "Authentication credentials were not provided.", "code": "UNAUTHORIZED"},
         )
 
-    # In Phase 1 mock mode, any valid session cookie resolves to the mock principal
+    db = None
+    if hasattr(request, "app") and hasattr(request.app, "state"):
+        db = getattr(request.app.state, "db", None)
+
+    if db is None:
+        try:
+            from fintech_app.main import db_pool
+            db = db_pool
+        except Exception:
+            db = None
+
+    # Fallback to mock principal in mock mode or when database is unavailable
+    if db is None or settings.use_mock_engine:
+        return MOCK_USER_PRINCIPAL
+
+    # Validate JWT session token
+    try:
+        payload = decode_session_token(session_token)
+    except jwt.PyJWTError as jwt_err:
+        logger.warning("Session token rejected: %s", type(jwt_err).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"detail": "Invalid or expired session token.", "code": "UNAUTHORIZED"},
+        )
+    except Exception as exc:
+        logger.warning("Unexpected error during session token decode: %s", type(exc).__name__)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"detail": "Invalid or expired session token.", "code": "UNAUTHORIZED"},
+        )
+
+    sub = payload.get("sub")
+    if not sub:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"detail": "Invalid session token claims.", "code": "UNAUTHORIZED"},
+        )
+
+    try:
+        user_uuid = UUID(str(sub))
+    except (ValueError, TypeError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"detail": "Malformed user identifier in session token.", "code": "UNAUTHORIZED"},
+        )
+
+    # Query DAL users table to verify user existence and active status
+    try:
+        user_rep = await db.get_records_from_users(find_only_first=True, user_id=user_uuid)
+    except Exception as db_exc:
+        logger.error("Database query error in get_current_user: %s", db_exc)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"detail": "Authentication verification failed.", "code": "UNAUTHORIZED"},
+        )
+
+    if not user_rep.success or not user_rep.data:
+        logger.warning("Session rejected: user_id %s not found in DAL", user_uuid)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"detail": "User associated with session token does not exist.", "code": "UNAUTHORIZED"},
+        )
+
+    user = user_rep.data
+    if not user.get("is_active", True):
+        logger.warning("Session rejected: user_id %s is inactive", user_uuid)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={"detail": "User account is inactive.", "code": "UNAUTHORIZED"},
+        )
+
     return CurrentUser(
-        user_id=UUID("00000000-0000-0000-0000-000000000001"),
-        email="analyst@graeae.eye",
-        full_name="Graeae Senior Underwriter",
-        role="ANALYST",
+        user_id=UUID(str(user["user_id"])),
+        email=str(user["email"]),
+        full_name=str(user["full_name"]),
+        role=str(user.get("role", "ANALYST")),
     )
