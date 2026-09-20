@@ -13,6 +13,7 @@ D. Auth hardening: missing session cookie triggers 401 UNAUTHORIZED on stream an
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import os
 import sys
@@ -114,23 +115,21 @@ async def asgi_call(
 def build_multipart(fields: Dict[str, str], files_list: List[Tuple[str, str | bytes]]) -> Tuple[bytes, str]:
     """Constructs multipart/form-data payload with boundary."""
     boundary = "----WebKitFormBoundaryGate3TestPayload"
-    lines = []
-    for k, v in fields.items():
-        lines.append(f"--{boundary}".encode("utf-8"))
-        lines.append(f'Content-Disposition: form-data; name="{k}"'.encode("utf-8"))
-        lines.append(b"")
-        lines.append(str(v).encode("utf-8"))
-    for fname, content in files_list:
-        lines.append(f"--{boundary}".encode("utf-8"))
-        lines.append(f'Content-Disposition: form-data; name="files"; filename="{fname}"'.encode("utf-8"))
-        lines.append(b"Content-Type: text/csv")
-        lines.append(b"")
-        lines.append(content.encode("utf-8") if isinstance(content, str) else content)
-    lines.append(f"--{boundary}--".encode("utf-8"))
-    lines.append(b"")
-    body = b"\r\n".join(lines)
-    content_type = f"multipart/form-data; boundary={boundary}"
-    return body, content_type
+    buf = io.BytesIO()
+    for name, value in fields.items():
+        buf.write(f"--{boundary}\r\n".encode("utf-8"))
+        buf.write(f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode("utf-8"))
+        buf.write(f"{value}\r\n".encode("utf-8"))
+    for filename, content in files_list:
+        buf.write(f"--{boundary}\r\n".encode("utf-8"))
+        buf.write(
+            f'Content-Disposition: form-data; name="files"; filename="{filename}"\r\n'.encode("utf-8")
+        )
+        buf.write(b"Content-Type: application/octet-stream\r\n\r\n")
+        buf.write(content.encode("utf-8") if isinstance(content, str) else content)
+        buf.write(b"\r\n")
+    buf.write(f"--{boundary}--\r\n".encode("utf-8"))
+    return buf.getvalue(), f"multipart/form-data; boundary={boundary}"
 
 
 # =====================================================================

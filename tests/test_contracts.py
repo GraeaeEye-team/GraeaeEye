@@ -85,7 +85,7 @@ async def asgi_call(
     return response_status, response_headers, response_body.getvalue()
 
 
-def build_multipart(fields: Dict[str, str], files: List[Tuple[str, str]]) -> Tuple[bytes, str]:
+def build_multipart(fields: Dict[str, str], files: List[Tuple[str, str | bytes]]) -> Tuple[bytes, str]:
     """Builds multipart/form-data payload with boundary."""
     boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
     buf = io.BytesIO()
@@ -98,7 +98,7 @@ def build_multipart(fields: Dict[str, str], files: List[Tuple[str, str]]) -> Tup
         buf.write(
             f'Content-Disposition: form-data; name="files"; filename="{filename}"\r\n'.encode("utf-8")
         )
-        buf.write(b"Content-Type: text/csv\r\n\r\n")
+        buf.write(b"Content-Type: application/octet-stream\r\n\r\n")
         buf.write(content.encode("utf-8") if isinstance(content, str) else content)
         buf.write(b"\r\n")
     buf.write(f"--{boundary}--\r\n".encode("utf-8"))
