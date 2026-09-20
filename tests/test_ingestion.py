@@ -3,12 +3,17 @@
 Проверяет строгие финансовые Pydantic-контракты, отсутствие float-дрейфа,
 фаззинг грязных CSV, потоковый парсинг Excel и интеграцию IngestionPipeline.
 """
+
 import io
+import os
+import sys
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID, uuid4
 
 import pytest
+
+sys.path.insert(0, os.path.abspath("src"))
 
 from fintech_app.core.exceptions import ParsingError
 from fintech_app.db.mock_connection import MockDatabase
@@ -19,11 +24,15 @@ from fintech_app.ingestion.ai_mapper import (
     validate_mapping,
 )
 from fintech_app.ingestion.external_intel import ExternalIntelligenceCollector
-from fintech_app.ingestion.parser import (
-    BankStatementParser,
-    clean_amount_string,
+from tests.mock_generator import (
     generate_mock_bank_statement_payload,
     generate_mock_transaction_batch,
+)
+from fintech_app.ingestion.parser import (
+    BankStatementParser,
+    CreditObligationParser,
+    InvoiceParser,
+    clean_amount_string,
     parse_date_flexible,
 )
 from fintech_app.ingestion.pipeline import IngestionPipeline
@@ -172,15 +181,40 @@ class TestFuzzyHeaderMapperAndCategorization:
             validate_mapping({"description", "account_number"})
 
     def test_expense_categorization(self):
-        assert categorize_transaction("Выплата заработной платы за июнь", TransactionDirection.OUTFLOW) == TransactionCategory.PAYROLL
-        assert categorize_transaction("Plata salariu angajati", TransactionDirection.OUTFLOW) == TransactionCategory.PAYROLL
-        assert categorize_transaction("Уплата НДС за 2 квартал", TransactionDirection.OUTFLOW) == TransactionCategory.TAX
-        assert categorize_transaction("Achitare impozit pe venit", TransactionDirection.OUTFLOW) == TransactionCategory.TAX
-        assert categorize_transaction("Погашение процентов по кредитному договору", TransactionDirection.OUTFLOW) == TransactionCategory.DEBT_SERVICE
-        assert categorize_transaction("Выплата дивидендов учредителям", TransactionDirection.OUTFLOW) == TransactionCategory.DIVIDEND
-        assert categorize_transaction("Оплата поставщику по накладной 102", TransactionDirection.OUTFLOW) == TransactionCategory.SUPPLIER_PAYMENT
-        assert categorize_transaction("Канцтовары и аренда", TransactionDirection.OUTFLOW) == TransactionCategory.OPERATING_EXPENSE
-        assert categorize_transaction("Поступление от покупателя", TransactionDirection.INFLOW) == TransactionCategory.REVENUE
+        assert (
+            categorize_transaction("Выплата заработной платы за июнь", TransactionDirection.OUTFLOW)
+            == TransactionCategory.PAYROLL
+        )
+        assert (
+            categorize_transaction("Plata salariu angajati", TransactionDirection.OUTFLOW)
+            == TransactionCategory.PAYROLL
+        )
+        assert (
+            categorize_transaction("Уплата НДС за 2 квартал", TransactionDirection.OUTFLOW) == TransactionCategory.TAX
+        )
+        assert (
+            categorize_transaction("Achitare impozit pe venit", TransactionDirection.OUTFLOW) == TransactionCategory.TAX
+        )
+        assert (
+            categorize_transaction("Погашение процентов по кредитному договору", TransactionDirection.OUTFLOW)
+            == TransactionCategory.DEBT_SERVICE
+        )
+        assert (
+            categorize_transaction("Выплата дивидендов учредителям", TransactionDirection.OUTFLOW)
+            == TransactionCategory.DIVIDEND
+        )
+        assert (
+            categorize_transaction("Оплата поставщику по накладной 102", TransactionDirection.OUTFLOW)
+            == TransactionCategory.SUPPLIER_PAYMENT
+        )
+        assert (
+            categorize_transaction("Канцтовары и аренда", TransactionDirection.OUTFLOW)
+            == TransactionCategory.OPERATING_EXPENSE
+        )
+        assert (
+            categorize_transaction("Поступление от покупателя", TransactionDirection.INFLOW)
+            == TransactionCategory.REVENUE
+        )
 
 
 class TestEdgeCaseFuzzingAndParser:
@@ -227,12 +261,14 @@ class TestExternalIntelAndPipelineIntegration:
     @pytest.mark.asyncio
     async def test_external_intel_fallback(self):
         collector = ExternalIntelligenceCollector(use_mock=True)
-        res = await collector.collect_all({
-            "business_id": uuid4(),
-            "company_name": "Test Company SRL",
-            "tax_id": "100260000001",
-            "sector_code": "G46",
-        })
+        res = await collector.collect_all(
+            {
+                "business_id": uuid4(),
+                "company_name": "Test Company SRL",
+                "tax_id": "100260000001",
+                "sector_code": "G46",
+            }
+        )
         assert res["success"] is True
         assert res["reputation"]["has_active_claims"] is False
         assert res["macro_metrics"]["macro_risk_level"] == "MODERATE"
@@ -256,3 +292,107 @@ class TestExternalIntelAndPipelineIntegration:
         assert result.records_ingested == 3
         assert result.external_data_acquired is True
         assert len(mock_db._storage["transactions"]) == 3
+
+
+class TestInvoiceAndCreditParsers:
+    """Тестирование парсеров счетов-фактур и кредитных обязательств."""
+
+    def test_invoice_csv_and_xlsx_parsing(self):
+        biz_id = uuid4()
+        inv_csv = b"""Invoice Number,Invoice Date,Due Date,Counterparty,Amount,Currency,Status
+INV-001,2026-01-01,2026-01-15,"Alpha, Beta & Partners SRL","5 432,10",MDL,PAID
+INV-002,2026-01-05,2026-01-20,"Global Supplies SA",12 000.00,MDL,OUTSTANDING
+"""
+        parser = InvoiceParser()
+        records = parser.parse_csv(inv_csv, biz_id)
+        assert len(records) == 2
+        assert records[0].counterparty_name == "Alpha, Beta & Partners SRL"
+        assert records[0].gross_amount == Decimal("5432.10")
+        assert records[1].counterparty_name == "Global Supplies SA"
+        assert records[1].gross_amount == Decimal("12000.00")
+
+        # Test Semicolon-delimited European CSV (unquoted commas)
+        inv_semicolon = b"""Invoice Number;Invoice Date;Due Date;Counterparty;Amount;Currency;Status
+INV-003;2026-02-01;2026-02-15;Euro Supplier SRL;8 765,43;EUR;PAID
+"""
+        records_semi = parser.parse_csv(inv_semicolon, biz_id)
+        assert len(records_semi) == 1
+        assert records_semi[0].counterparty_name == "Euro Supplier SRL"
+        assert records_semi[0].gross_amount == Decimal("8765.43")
+
+        # Test XLSX
+        try:
+            import openpyxl
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.append(["Invoice Number", "Invoice Date", "Due Date", "Counterparty", "Amount", "Status"])
+            ws.append(["INV-001", "2026-01-01", "2026-01-15", "Alpha, Beta & Partners SRL", "5 432,10", "PAID"])
+            buf = io.BytesIO()
+            wb.save(buf)
+            xlsx_records = parser.parse_xlsx(buf.getvalue(), biz_id)
+            assert len(xlsx_records) == 1
+            assert xlsx_records[0].counterparty_name == "Alpha, Beta & Partners SRL"
+            assert xlsx_records[0].gross_amount == Decimal("5432.10")
+        except ImportError:
+            pass
+
+    def test_credit_obligation_csv_and_xlsx_parsing(self):
+        biz_id = uuid4()
+        cred_csv = b"""Obligation Number,Creditor,Contract Date,Maturity Date,Principal,Monthly Payment,Status
+CR-001,"Banca de Finante, SA",2025-01-01,2027-01-01,100 000.00,4 500.00,ACTIVE
+CR-002,"Victoriabank",2025-03-01,2028-03-01,"250 000,50","8 200,00",ACTIVE
+"""
+        parser = CreditObligationParser()
+        records = parser.parse_csv(cred_csv, biz_id)
+        assert len(records) == 2
+        assert records[0].lender_name == "Banca de Finante, SA"
+        assert records[0].principal_amount == Decimal("100000.00")
+        assert records[0].monthly_payment == Decimal("4500.00")
+        assert records[1].principal_amount == Decimal("250000.50")
+        assert records[1].monthly_payment == Decimal("8200.00")
+
+        # Test Semicolon European CSV
+        cred_semi = b"""Obligation Number;Creditor;Contract Date;Maturity Date;Principal;Monthly Payment;Status
+CR-003;Moldindconbank;2025-01-01;2029-01-01;500 000,00;15 300,50;ACTIVE
+"""
+        records_semi = parser.parse_csv(cred_semi, biz_id)
+        assert len(records_semi) == 1
+        assert records_semi[0].lender_name == "Moldindconbank"
+        assert records_semi[0].principal_amount == Decimal("500000.00")
+        assert records_semi[0].monthly_payment == Decimal("15300.50")
+
+        # Test XLSX
+        try:
+            import openpyxl
+
+            wb = openpyxl.Workbook()
+            ws = wb.active
+            ws.append(["Obligation Number", "Creditor", "Principal", "Monthly Payment", "Status"])
+            ws.append(["CR-001", "Banca de Finante, SA", "100 000.00", "4 500.00", "ACTIVE"])
+            buf = io.BytesIO()
+            wb.save(buf)
+            xlsx_records = parser.parse_xlsx(buf.getvalue(), biz_id)
+            assert len(xlsx_records) == 1
+            assert xlsx_records[0].lender_name == "Banca de Finante, SA"
+            assert xlsx_records[0].principal_amount == Decimal("100000.00")
+        except ImportError:
+            pass
+
+    def test_empty_or_corrupt_files_raise_parsing_error(self):
+        biz_id = uuid4()
+        inv_parser = InvoiceParser()
+        cred_parser = CreditObligationParser()
+
+        with pytest.raises(ParsingError):
+            inv_parser.parse_csv(b"", biz_id)
+
+        with pytest.raises(ParsingError):
+            cred_parser.parse_csv(b"", biz_id)
+
+        # Missing required columns
+        with pytest.raises(ParsingError):
+            inv_parser.parse_csv(b"SomeColumn,AnotherColumn\nVal1,Val2\n", biz_id)
+
+        with pytest.raises(ParsingError):
+            cred_parser.parse_csv(b"SomeColumn,AnotherColumn\nVal1,Val2\n", biz_id)

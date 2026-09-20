@@ -3,6 +3,7 @@ Submodule 4.1: Ownership Structure Evaluator (OS).
 Calculates shareholder concentration (HHI), management-ownership overlap (MOOR),
 governance independence (GIR), and evaluates capital stability and key-person risk.
 """
+
 from typing import Any
 
 from .base import (
@@ -39,9 +40,7 @@ class OwnershipStructureEvaluator(BaseSubmoduleEvaluator):
                 },
                 summary="No shareholder records present.",
                 diagnostic_report=(
-                    "[SUBMODULE 4.1: OWNERSHIP STRUCTURE]\n"
-                    "STATUS: DATA_ABSENT\n"
-                    "VERDICT: DATA_ABSENT"
+                    "[SUBMODULE 4.1: OWNERSHIP STRUCTURE]\n" "STATUS: DATA_ABSENT\n" "VERDICT: DATA_ABSENT"
                 ),
             )
 
@@ -96,8 +95,7 @@ class OwnershipStructureEvaluator(BaseSubmoduleEvaluator):
                 "Governance_Independence_Index": governance_idx,
             },
             summary=(
-                f"HHI: {hhi:.1f}, Management Equity: {moor * 100.0:.1f}%, "
-                f"Board Independence: {gir * 100.0:.1f}%."
+                f"HHI: {hhi:.1f}, Management Equity: {moor * 100.0:.1f}%, " f"Board Independence: {gir * 100.0:.1f}%."
             ),
             diagnostic_report=report,
         )

@@ -3,6 +3,7 @@ Submodule 4.7: Cash Flow Stability Evaluator (CFS).
 Evaluates revenue volatility over 12 monthly rolling buckets and inflow trend trajectory.
 Calculates Coefficient of Variation (CV) and OLS trend slope.
 """
+
 from datetime import date, datetime
 import math
 from typing import Any
@@ -29,10 +30,14 @@ class CashflowStabilityEvaluator(BaseSubmoduleEvaluator):
 
         # Filter incoming revenue transactions
         revenue_txs = [
-            tx for tx in transactions
+            tx
+            for tx in transactions
             if str(getattr(tx, "direction", "")).upper() == "INFLOW"
             and str(getattr(tx, "category", "")).upper() in ("CLIENT_REVENUE", "REVENUE")
         ]
+        # Fallback to general INFLOW if no explicit CLIENT_REVENUE/REVENUE
+        if not revenue_txs:
+            revenue_txs = [tx for tx in transactions if str(getattr(tx, "direction", "")).upper() == "INFLOW"]
 
         if not revenue_txs:
             return SubmoduleResult(
@@ -46,9 +51,7 @@ class CashflowStabilityEvaluator(BaseSubmoduleEvaluator):
                 },
                 summary="No revenue inflow transaction records present.",
                 diagnostic_report=(
-                    "[SUBMODULE 4.7: CASH FLOW STABILITY]\n"
-                    "STATUS: DATA_ABSENT\n"
-                    "VERDICT: DATA_ABSENT"
+                    "[SUBMODULE 4.7: CASH FLOW STABILITY]\n" "STATUS: DATA_ABSENT\n" "VERDICT: DATA_ABSENT"
                 ),
             )
 
@@ -72,8 +75,7 @@ class CashflowStabilityEvaluator(BaseSubmoduleEvaluator):
 
         # Check if transactions carry date/timestamp metadata
         has_dates = any(
-            getattr(tx, "timestamp", None) is not None
-            or getattr(tx, "transaction_date", None) is not None
+            getattr(tx, "timestamp", None) is not None or getattr(tx, "transaction_date", None) is not None
             for tx in revenue_txs
         )
 
@@ -102,9 +104,7 @@ class CashflowStabilityEvaluator(BaseSubmoduleEvaluator):
                     },
                     summary="No revenue inflow records within trailing 12-month period.",
                     diagnostic_report=(
-                        "[SUBMODULE 4.7: CASH FLOW STABILITY]\n"
-                        "STATUS: DATA_ABSENT\n"
-                        "VERDICT: DATA_ABSENT"
+                        "[SUBMODULE 4.7: CASH FLOW STABILITY]\n" "STATUS: DATA_ABSENT\n" "VERDICT: DATA_ABSENT"
                     ),
                 )
 

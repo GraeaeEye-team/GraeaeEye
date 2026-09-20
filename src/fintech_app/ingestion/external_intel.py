@@ -4,6 +4,7 @@
 детерминированным нейтральным fallback-ответом при оффлайне или сбоях сети.
 Boundary Rule: только сбор и нормализация, никакого кредитного скоринга (ML-логика в ml/).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -116,14 +117,11 @@ class ExternalIntelligenceCollector:
         legal_name: str,
         tax_id: str,
     ) -> Dict[str, Any]:
-        """Эмуляция сетевого запроса к внешнему реестру / скраперу."""
-        # Небольшая задержка для имитации сетевого I/O
-        await asyncio.sleep(0.05)
+        """Эмуляция сетевого запроса к внешнему реестру / скраперу (детерминированный офлайн-адаптер)."""
         return self._neutral_reputation_fallback(business_id, legal_name, tax_id, source="EXTERNAL_REGISTRY")
 
     async def _fetch_remote_macro(self, industry_code: str) -> Dict[str, Any]:
-        """Эмуляция сетевого запроса к макроэкономическим агрегаторам."""
-        await asyncio.sleep(0.05)
+        """Эмуляция сетевого запроса к макроэкономическим агрегаторам (детерминированный офлайн-адаптер)."""
         return self._neutral_macro_fallback(industry_code, source="CENTRAL_BANK_API")
 
     # -------------------------------------------------------------------------

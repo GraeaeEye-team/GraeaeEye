@@ -6,6 +6,7 @@ calculates the overall Investment Attractiveness Score (0-100) via dynamic weigh
 derives probability of default (PD) via logistic modeling, produces pseudo-SHAP factor attributions,
 and generates structured synthesis prompts for LLM underwriting memoranda.
 """
+
 from dataclasses import dataclass, field
 import math
 
@@ -48,7 +49,7 @@ class CreditScoringEngine:
     into an investment attractiveness score, probability of default, and LLM synthesis prompt.
     """
 
-    # Submodule base weights (sum = 1.00)
+    # Submodule base weights (dynamically renormalized to 1.00 across active submodules)
     SUBMODULE_WEIGHTS: dict[str, float] = {
         "OS": 0.08,
         "WPR": 0.12,
@@ -96,6 +97,21 @@ class CreditScoringEngine:
         "Solvency_Leverage_Index",
     ]
 
+    @classmethod
+    def calculate_probability_of_default(cls, score: float) -> float:
+        """
+        Calculates Probability of Default (PD) via canonical logistic transformation:
+        PD = 1.0 / (1.0 + exp((score - 50.0) / 12.0))
+        Clamped to [0.001, 0.999] and rounded to 4 decimal places.
+        """
+        try:
+            pd_exponent = (score - 50.0) / 12.0
+            pd_raw = 1.0 / (1.0 + math.exp(pd_exponent))
+        except OverflowError:
+            pd_raw = 0.001 if score > 50.0 else 0.999
+
+        return round(clamp(pd_raw, 0.001, 0.999), 4)
+
     def _get_submodule_for_index(self, idx: int) -> str:
         """Returns the submodule code corresponding to a canonical feature vector index."""
         for code, (start, end) in self.SUBMODULE_SLICES.items():
@@ -122,30 +138,24 @@ class CreditScoringEngine:
         submodule_raw_values: dict[str, list[float | None]] = {}
 
         for code, (start_idx, end_idx) in self.SUBMODULE_SLICES.items():
-            slice_vals = [
-                feature_vector[i] if i < len(feature_vector) else None
-                for i in range(start_idx, end_idx)
-            ]
+            slice_vals = [feature_vector[i] if i < len(feature_vector) else None for i in range(start_idx, end_idx)]
             submodule_raw_values[code] = slice_vals
-            valid_vals = [v for v in slice_vals if v is not None]
+            valid_vals = [
+                float(v)
+                for v in slice_vals
+                if v is not None and not (isinstance(v, (float, int)) and math.isnan(float(v)))
+            ]
             if valid_vals:
                 active_submodules[code] = sum(valid_vals) / len(valid_vals)
 
         # Step 2: Dynamic weight renormalization over active submodules
-        total_active_weight = sum(
-            self.SUBMODULE_WEIGHTS[code] for code in active_submodules
-        )
+        total_active_weight = sum(self.SUBMODULE_WEIGHTS[code] for code in active_submodules)
 
         renormalized_weights: dict[str, float] = {}
         if total_active_weight > 0.0:
             for code in active_submodules:
-                renormalized_weights[code] = (
-                    self.SUBMODULE_WEIGHTS[code] / total_active_weight
-                )
-            raw_score = sum(
-                renormalized_weights[code] * active_submodules[code]
-                for code in active_submodules
-            )
+                renormalized_weights[code] = self.SUBMODULE_WEIGHTS[code] / total_active_weight
+            raw_score = sum(renormalized_weights[code] * active_submodules[code] for code in active_submodules)
         else:
             raw_score = 50.0
 
@@ -153,16 +163,7 @@ class CreditScoringEngine:
         score = round(score, 2)
 
         # Step 3: Probability of Default (PD) via logistic transformation
-        # PD = 1.0 / (1.0 + exp((score - 50.0) / 12.0))
-        # At score=50.0 -> PD=0.5000; at score=100.0 -> PD≈0.0153; at score=0.0 -> PD≈0.9847
-        try:
-            pd_exponent = (score - 50.0) / 12.0
-            pd_raw = 1.0 / (1.0 + math.exp(pd_exponent))
-        except OverflowError:
-            pd_raw = 0.001 if score > 50.0 else 0.999
-
-        pd_val = clamp(pd_raw, 0.001, 0.999)
-        pd_val = round(pd_val, 4)
+        pd_val = self.calculate_probability_of_default(score)
 
         # Step 4: Decision verdicts and credit recommendations
         if score >= 75.0:
@@ -191,11 +192,18 @@ class CreditScoringEngine:
         for idx, feat_name in enumerate(self.FEATURE_NAMES):
             val = feature_vector[idx] if idx < len(feature_vector) else None
             code = self._get_submodule_for_index(idx)
-            if val is not None and code in active_submodules:
+            is_valid_val = val is not None and not (isinstance(val, (float, int)) and math.isnan(float(val)))
+            if is_valid_val and code in active_submodules:
                 w_prime = renormalized_weights[code]
-                valid_count = len([v for v in submodule_raw_values[code] if v is not None])
+                valid_count = len(
+                    [
+                        v
+                        for v in submodule_raw_values[code]
+                        if v is not None and not (isinstance(v, (float, int)) and math.isnan(float(v)))
+                    ]
+                )
                 feat_weight = w_prime / max(valid_count, 1)
-                feat_attr = round((val - 50.0) * feat_weight, 4)
+                feat_attr = round((float(val) - 50.0) * feat_weight, 4)
             else:
                 feat_attr = 0.0
 
@@ -297,8 +305,11 @@ def evaluate_counterparty_risk(
     return engine.calculate_score(feature_vector, compiled_dossier_text)
 
 
+SUBMODULE_WEIGHTS = CreditScoringEngine.SUBMODULE_WEIGHTS
+
 __all__ = [
     "CreditScoringEngine",
     "CreditScoringResult",
     "evaluate_counterparty_risk",
+    "SUBMODULE_WEIGHTS",
 ]

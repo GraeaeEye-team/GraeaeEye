@@ -49,9 +49,12 @@ async def stream_telemetry_from_db(
     """
     last_log_id: int = 0
     emitted_stages: Set[str] = set()
+    iteration_count: int = 0
+    MAX_ITERATIONS: int = 1500  # 300 seconds at 200ms cadence
 
     try:
-        while True:
+        while iteration_count < MAX_ITERATIONS:
+            iteration_count += 1
             # 1. Fetch new logs from analysis_logs
             logs_rep = await db.get_records_from_analysis_logs(run_id=run_id)
             if logs_rep.success and logs_rep.data:
@@ -152,6 +155,17 @@ async def stream_telemetry_from_db(
 
             # Poll interval: 200ms
             await asyncio.sleep(0.20)
+        else:
+            logger.warning(
+                "SSE telemetry stream timed out after %d iterations for run %s",
+                MAX_ITERATIONS,
+                run_id,
+            )
+            fail_payload = {
+                "run_id": str(run_id),
+                "error": "Pipeline execution telemetry stream timed out after 300 seconds.",
+            }
+            yield f"event: PIPELINE_FAILED\ndata: {json.dumps(fail_payload)}\n\n"
 
     except asyncio.CancelledError:
         logger.info("SSE client disconnected from stream for run %s", run_id)

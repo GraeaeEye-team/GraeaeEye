@@ -7,6 +7,7 @@
 - clamp, safe_div: Чистые математические функции-хелперы для финансовых расчетов.
 - logger: Централизованный логгер аналитического ядра smart_credit.ml.
 """
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from decimal import Decimal
@@ -90,10 +91,7 @@ def clamp(val: float, low: float = 0.0, high: float = 100.0) -> float:
     :raises ValueError: Если low > high.
     """
     if low > high:
-        raise ValueError(
-            f"Нижняя граница low ({low}) не может быть больше "
-            f"верхней границы high ({high})"
-        )
+        raise ValueError(f"Нижняя граница low ({low}) не может быть больше " f"верхней границы high ({high})")
     if val < low:
         return float(low)
     if val > high:
@@ -135,4 +133,3 @@ __all__ = [
     "logger",
     "safe_div",
 ]
-

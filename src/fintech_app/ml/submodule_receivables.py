@@ -3,6 +3,7 @@ Submodule 4.8: Receivables Quality Evaluator (RQ).
 Evaluates trapped working capital, delinquent receivables exposure (CER),
 customer payment slippage (Mean_Delay_Days), and Days Sales Outstanding (DSO).
 """
+
 from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
@@ -25,10 +26,7 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
 
     def evaluate(self, snapshot: Any) -> SubmoduleResult:
         invoices = getattr(snapshot, "invoices", []) if snapshot else []
-        receivables = [
-            inv for inv in invoices
-            if str(getattr(inv, "invoice_type", "")).upper() == "RECEIVABLE"
-        ]
+        receivables = [inv for inv in invoices if str(getattr(inv, "invoice_type", "")).upper() == "RECEIVABLE"]
 
         if not receivables:
             return SubmoduleResult(
@@ -42,9 +40,7 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
                 },
                 summary="No receivable invoice records present.",
                 diagnostic_report=(
-                    "[SUBMODULE 4.8: RECEIVABLES QUALITY]\n"
-                    "STATUS: DATA_ABSENT\n"
-                    "VERDICT: DATA_ABSENT"
+                    "[SUBMODULE 4.8: RECEIVABLES QUALITY]\n" "STATUS: DATA_ABSENT\n" "VERDICT: DATA_ABSENT"
                 ),
             )
 
@@ -60,11 +56,13 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
 
         # 1. Total Receivables and Delinquent Receivables
         total_rec = sum(
-            float(getattr(inv, "gross_amount", 0.0)) for inv in receivables
+            float(getattr(inv, "gross_amount", 0.0))
+            for inv in receivables
             if str(getattr(inv, "status", "")).upper() not in ("SETTLED", "PAID")
         )
         delinquent_rec = sum(
-            float(getattr(inv, "gross_amount", 0.0)) for inv in receivables
+            float(getattr(inv, "gross_amount", 0.0))
+            for inv in receivables
             if str(getattr(inv, "status", "")).upper() in ("OVERDUE", "DEFAULTED", "DISPUTED")
         )
 
@@ -84,9 +82,7 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
                     due_date = due_date.date()
 
                 # Filter settled invoices within trailing 12 months if date present
-                if actual_date is not None and (
-                    actual_date < one_year_ago or actual_date > as_of_date
-                ):
+                if actual_date is not None and (actual_date < one_year_ago or actual_date > as_of_date):
                     continue
 
                 if actual_date and due_date:
@@ -103,16 +99,11 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
             return dt
 
         credit_sales_invoices = [
-            inv for inv in receivables
-            if _get_issue_dt(inv) is None or _get_issue_dt(inv) >= one_year_ago
+            inv for inv in receivables if _get_issue_dt(inv) is None or _get_issue_dt(inv) >= one_year_ago
         ]
-        annual_credit_sales = sum(
-            float(getattr(inv, "gross_amount", 0.0)) for inv in credit_sales_invoices
-        )
+        annual_credit_sales = sum(float(getattr(inv, "gross_amount", 0.0)) for inv in credit_sales_invoices)
         if annual_credit_sales <= 0.0:
-            annual_credit_sales = sum(
-                float(getattr(inv, "gross_amount", 0.0)) for inv in receivables
-            )
+            annual_credit_sales = sum(float(getattr(inv, "gross_amount", 0.0)) for inv in receivables)
 
         dso = (total_rec / max(annual_credit_sales, 1.0)) * 365.0
 
@@ -149,10 +140,7 @@ class ReceivablesQualityEvaluator(BaseSubmoduleEvaluator):
                 "Receivables_Safety_Index": receivables_safety_idx,
                 "Client_Payment_Discipline_Index": discipline_idx,
             },
-            summary=(
-                f"Delinquency Exposure (CER): {cer * 100.0:.1f}%, "
-                f"Mean Delay: {mean_delay:.1f} days."
-            ),
+            summary=(f"Delinquency Exposure (CER): {cer * 100.0:.1f}%, " f"Mean Delay: {mean_delay:.1f} days."),
             diagnostic_report=report,
         )
 

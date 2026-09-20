@@ -68,9 +68,7 @@ ML_TO_API_SUBMODULE_MAP: Dict[str, str] = {
     "ICDL": "ICDL_4_9",
 }
 
-API_TO_ML_SUBMODULE_MAP: Dict[str, str] = {
-    v: k for k, v in ML_TO_API_SUBMODULE_MAP.items()
-}
+API_TO_ML_SUBMODULE_MAP: Dict[str, str] = {v: k for k, v in ML_TO_API_SUBMODULE_MAP.items()}
 
 SUBMODULE_NAMES: Dict[str, str] = {
     "OS": "Ownership Structure & Corporate Governance",
@@ -102,6 +100,7 @@ def api_submodule_to_ml(long_id: str) -> str:
 # =====================================================================
 # 2. 18D FEATURE VECTOR KEY MAPPINGS & BIJECTION ASSERTION
 # =====================================================================
+
 
 def _build_and_validate_index_mappings() -> Tuple[Dict[str, str], Dict[str, str]]:
     """
@@ -137,6 +136,12 @@ def _build_and_validate_index_mappings() -> Tuple[Dict[str, str], Dict[str, str]
 
 ML_TO_API_INDEX_MAP, API_TO_ML_INDEX_MAP = _build_and_validate_index_mappings()
 
+# Bijective mapping aliases for external contract verifications
+FEATURE_KEY_ML_TO_API: Dict[str, str] = ML_TO_API_INDEX_MAP
+FEATURE_KEY_API_TO_ML: Dict[str, str] = API_TO_ML_INDEX_MAP
+SUBMODULE_CODE_ML_TO_API: Dict[str, str] = ML_TO_API_SUBMODULE_MAP
+SUBMODULE_CODE_API_TO_ML: Dict[str, str] = API_TO_ML_SUBMODULE_MAP
+
 
 def ml_index_to_api(ml_key: str) -> str:
     """Converts ML Title_Snake_Case index key to API snake_case."""
@@ -161,6 +166,7 @@ def api_index_to_ml(api_key: str) -> str:
 # =====================================================================
 # 3. STATUS & VERDICT MAPPING
 # =====================================================================
+
 
 def map_submodule_status(
     status: EvaluationStatus,
@@ -189,6 +195,7 @@ def map_submodule_status(
 # =====================================================================
 # 4. DETERMINISTIC LLM SYNTHESIS BUILDER
 # =====================================================================
+
 
 def build_llm_synthesis(
     scoring_result: Optional[CreditScoringResult],
@@ -239,13 +246,9 @@ def build_llm_synthesis(
                     if idx_val is not None:
                         snake_idx = ml_idx_name.lower()
                         if idx_val < 40.0:
-                            critical_flags.append(
-                                f"[{long_id}] Weak metric '{snake_idx}': {idx_val:.1f}/100.0."
-                            )
+                            critical_flags.append(f"[{long_id}] Weak metric '{snake_idx}': {idx_val:.1f}/100.0.")
                         elif idx_val >= 70.0:
-                            positive_indicators.append(
-                                f"[{long_id}] Robust metric '{snake_idx}': {idx_val:.1f}/100.0."
-                            )
+                            positive_indicators.append(f"[{long_id}] Robust metric '{snake_idx}': {idx_val:.1f}/100.0.")
 
     # 4. Top-level risk flags from scoring
     if scoring_result:
@@ -271,6 +274,7 @@ def build_llm_synthesis(
 # =====================================================================
 # 5. FULL RESULT MAPPING
 # =====================================================================
+
 
 def map_ml_result_to_analysis_report(
     pipeline_result: UnderwritingPipelineResult,
@@ -363,14 +367,8 @@ def map_ml_result_to_analysis_report(
         submodule_cards.append(card)
 
     # 4. Overall Pipeline Status
-    has_error = any(
-        res.status == EvaluationStatus.ERROR
-        for res in pipeline_result.submodule_results.values()
-    )
-    has_bypassed = any(
-        res.status == EvaluationStatus.DATA_ABSENT
-        for res in pipeline_result.submodule_results.values()
-    )
+    has_error = any(res.status == EvaluationStatus.ERROR for res in pipeline_result.submodule_results.values())
+    has_bypassed = any(res.status == EvaluationStatus.DATA_ABSENT for res in pipeline_result.submodule_results.values())
 
     if has_error:
         overall_status = AnalysisStatus.DEGRADED
@@ -409,9 +407,13 @@ def map_ml_result_to_analysis_report(
 __all__ = [
     "ML_TO_API_SUBMODULE_MAP",
     "API_TO_ML_SUBMODULE_MAP",
+    "SUBMODULE_CODE_ML_TO_API",
+    "SUBMODULE_CODE_API_TO_ML",
     "SUBMODULE_NAMES",
     "ML_TO_API_INDEX_MAP",
     "API_TO_ML_INDEX_MAP",
+    "FEATURE_KEY_ML_TO_API",
+    "FEATURE_KEY_API_TO_ML",
     "ml_submodule_to_api",
     "api_submodule_to_ml",
     "ml_index_to_api",

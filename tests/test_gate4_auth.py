@@ -43,6 +43,7 @@ from fintech_app.main import app
 # IN-PROCESS ASGI TEST HARNESS
 # =====================================================================
 
+
 async def asgi_call(
     method: str,
     path: str,
@@ -51,9 +52,7 @@ async def asgi_call(
 ) -> Tuple[int, List[Tuple[str, str]], bytes]:
     """Pure in-process ASGI caller for FastAPI app."""
     headers = headers or {}
-    raw_headers = [
-        (k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in headers.items()
-    ]
+    raw_headers = [(k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in headers.items()]
     if body and not any(k.lower() == "content-length" for k in headers):
         raw_headers.append((b"content-length", str(len(body)).encode("latin-1")))
 
@@ -88,9 +87,7 @@ async def asgi_call(
         nonlocal status_code, response_headers, response_body
         if message["type"] == "http.response.start":
             status_code = message["status"]
-            response_headers = [
-                (k.decode("latin-1"), v.decode("latin-1")) for k, v in message["headers"]
-            ]
+            response_headers = [(k.decode("latin-1"), v.decode("latin-1")) for k, v in message["headers"]]
         elif message["type"] == "http.response.body":
             response_body.append(message.get("body", b""))
 
@@ -105,7 +102,7 @@ def extract_cookie(headers: List[Tuple[str, str]], cookie_name: str) -> Optional
             parts = v.split(";")
             first_part = parts[0].strip()
             if first_part.startswith(f"{cookie_name}="):
-                return first_part[len(f"{cookie_name}="):]
+                return first_part[len(f"{cookie_name}=") :]
     return None
 
 
@@ -120,6 +117,7 @@ def get_set_cookie_header(headers: List[Tuple[str, str]], cookie_name: str) -> O
 # =====================================================================
 # TEST A: REAL USER REGISTRATION OVER DAL
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_gate4_real_registration():
@@ -186,11 +184,13 @@ async def test_gate4_real_registration():
     assert dup_data.get("code") == "EMAIL_EXISTS"
 
     # 3. Validation failure: password too short (< 8 chars)
-    short_pw_body = json.dumps({
-        "email": "short@graeae.eye",
-        "password": "short",
-        "full_name": "Shorty",
-    }).encode("utf-8")
+    short_pw_body = json.dumps(
+        {
+            "email": "short@graeae.eye",
+            "password": "short",
+            "full_name": "Shorty",
+        }
+    ).encode("utf-8")
     st_short, _, resp_short_b = await asgi_call(
         "POST",
         "/api/v1/auth/register",
@@ -202,11 +202,13 @@ async def test_gate4_real_registration():
     assert short_data.get("code") == "VALIDATION_ERROR"
 
     # 4. Validation failure: bad email
-    bad_email_body = json.dumps({
-        "email": "notanemail",
-        "password": "valid-password-123",
-        "full_name": "No Email",
-    }).encode("utf-8")
+    bad_email_body = json.dumps(
+        {
+            "email": "notanemail",
+            "password": "valid-password-123",
+            "full_name": "No Email",
+        }
+    ).encode("utf-8")
     st_be, _, resp_be_b = await asgi_call(
         "POST",
         "/api/v1/auth/register",
@@ -218,11 +220,13 @@ async def test_gate4_real_registration():
     assert be_data.get("code") == "VALIDATION_ERROR"
 
     # 5. Validation failure: empty full_name
-    empty_name_body = json.dumps({
-        "email": "empty@graeae.eye",
-        "password": "valid-password-123",
-        "full_name": "   ",
-    }).encode("utf-8")
+    empty_name_body = json.dumps(
+        {
+            "email": "empty@graeae.eye",
+            "password": "valid-password-123",
+            "full_name": "   ",
+        }
+    ).encode("utf-8")
     st_en, _, resp_en_b = await asgi_call(
         "POST",
         "/api/v1/auth/register",
@@ -237,6 +241,7 @@ async def test_gate4_real_registration():
 # =====================================================================
 # TEST B: REAL TOKEN AUTHENTICATION & LOGIN OVER DAL
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_gate4_real_token_authentication():
@@ -325,6 +330,7 @@ async def test_gate4_real_token_authentication():
 # TEST C: SESSION VALIDATION & PROTECTED ROUTE ACCESS
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_gate4_session_validation_and_access():
     """
@@ -376,6 +382,7 @@ async def test_gate4_session_validation_and_access():
 # TEST D: MOCK FALLBACK REGRESSION (USE_MOCK_ENGINE=true)
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_gate4_mock_fallback():
     """
@@ -384,10 +391,12 @@ async def test_gate4_mock_fallback():
     settings.use_mock_engine = True
 
     # 1. Token authentication with mock fixture credentials
-    mock_creds = json.dumps({
-        "email": "analyst@graeae.eye",
-        "password": "correct-horse-battery-staple",
-    }).encode("utf-8")
+    mock_creds = json.dumps(
+        {
+            "email": "analyst@graeae.eye",
+            "password": "correct-horse-battery-staple",
+        }
+    ).encode("utf-8")
     st, hdrs, b = await asgi_call(
         "POST",
         "/api/v1/auth/token",
@@ -411,6 +420,7 @@ async def test_gate4_mock_fallback():
 # =====================================================================
 # TEST E: TOKEN EXPIRY & SIGNATURE TAMPERING
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_gate4_token_expiry_and_tampering():
@@ -473,6 +483,7 @@ async def test_gate4_token_expiry_and_tampering():
 # TEST F: SECURITY AUDIT (NO PLAINTEXT PASSWORDS IN LOGS OR RESPONSES)
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_gate4_security_audit(caplog):
     """
@@ -489,11 +500,13 @@ async def test_gate4_security_audit(caplog):
 
     with caplog.at_level(logging.DEBUG):
         # Register
-        reg_body = json.dumps({
-            "email": unique_email,
-            "password": secret_test_password,
-            "full_name": "Audit User",
-        }).encode("utf-8")
+        reg_body = json.dumps(
+            {
+                "email": unique_email,
+                "password": secret_test_password,
+                "full_name": "Audit User",
+            }
+        ).encode("utf-8")
         st_reg, _, b_reg = await asgi_call(
             "POST",
             "/api/v1/auth/register",
@@ -504,10 +517,12 @@ async def test_gate4_security_audit(caplog):
         assert "password_hash" not in b_reg.decode("utf-8")
 
         # Login
-        login_body = json.dumps({
-            "email": unique_email,
-            "password": secret_test_password,
-        }).encode("utf-8")
+        login_body = json.dumps(
+            {
+                "email": unique_email,
+                "password": secret_test_password,
+            }
+        ).encode("utf-8")
         st_log, _, b_log = await asgi_call(
             "POST",
             "/api/v1/auth/token",
@@ -525,6 +540,7 @@ async def test_gate4_security_audit(caplog):
 # =====================================================================
 # TARGETED FIX-UP: REMOVE MOCK-TOKEN BACKDOOR FROM REAL-MODE AUTH PATH
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_gate4_real_mode_rejects_mock_token():
@@ -584,11 +600,13 @@ async def test_gate4_real_mode_accepts_valid_jwt_flow():
     settings.use_mock_engine = False
 
     # Register user
-    reg_body = json.dumps({
-        "email": "fixup.jwt@graeae.eye",
-        "password": "valid-password-2026",
-        "full_name": "Fixup JWT User",
-    }).encode("utf-8")
+    reg_body = json.dumps(
+        {
+            "email": "fixup.jwt@graeae.eye",
+            "password": "valid-password-2026",
+            "full_name": "Fixup JWT User",
+        }
+    ).encode("utf-8")
     st_reg, hdrs_reg, _ = await asgi_call(
         "POST",
         "/api/v1/auth/register",
@@ -617,10 +635,12 @@ async def test_gate4_mock_mode_preserves_mock_cookie():
     """
     settings.use_mock_engine = True
 
-    mock_creds = json.dumps({
-        "email": "analyst@graeae.eye",
-        "password": "correct-horse-battery-staple",
-    }).encode("utf-8")
+    mock_creds = json.dumps(
+        {
+            "email": "analyst@graeae.eye",
+            "password": "correct-horse-battery-staple",
+        }
+    ).encode("utf-8")
     st, hdrs, b = await asgi_call(
         "POST",
         "/api/v1/auth/token",

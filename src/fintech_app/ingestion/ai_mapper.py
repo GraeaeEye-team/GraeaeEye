@@ -3,6 +3,7 @@
 Обеспечивает нечеткое сопоставление заголовков банковских выписок (RU, EN, RO, DE),
 семантическую категоризацию транзакций и интеграцию с LLM/эмбеддингами при необходимости.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, time
@@ -217,43 +218,90 @@ def categorize_transaction(
 
     # Зарплатные выплаты
     payroll_keywords = [
-        "salariu", "salary", "remunerare", "payroll", "зарплат", "заработ",
-        "оплата труда", "фот", "вознаграждение", "аванс сотруд", "расчет при увол",
-        "премия", "з/п", " зп "
+        "salariu",
+        "salary",
+        "remunerare",
+        "payroll",
+        "зарплат",
+        "заработ",
+        "оплата труда",
+        "фот",
+        "вознаграждение",
+        "аванс сотруд",
+        "расчет при увол",
+        "премия",
+        "з/п",
+        " зп ",
     ]
     if any(k in desc_lower for k in payroll_keywords):
         return TransactionCategory.PAYROLL
 
     # Налоговые и бюджетные платежи
     tax_keywords = [
-        "fisc", "tva", "impozit", "buget", "tax", "vat", "налог", "пошлина",
-        "бюджет", "сбор", "пенсион", "страхов", "соцстрах", "фсс", "ффомс",
-        "ндфл", "ндс", "усн", "госпошлина"
+        "fisc",
+        "tva",
+        "impozit",
+        "buget",
+        "tax",
+        "vat",
+        "налог",
+        "пошлина",
+        "бюджет",
+        "сбор",
+        "пенсион",
+        "страхов",
+        "соцстрах",
+        "фсс",
+        "ффомс",
+        "ндфл",
+        "ндс",
+        "усн",
+        "госпошлина",
     ]
     if any(k in desc_lower for k in tax_keywords):
         return TransactionCategory.TAX
 
     # Обслуживание долга, кредиты, лизинг
     debt_keywords = [
-        "credit", "dobanda", "loan", "leasing", "кредит", "процент",
-        "лизинг", "долг", "погашение овердрафт", "тело долга", "комиссия банка",
-        "ссуда"
+        "credit",
+        "dobanda",
+        "loan",
+        "leasing",
+        "кредит",
+        "процент",
+        "лизинг",
+        "долг",
+        "погашение овердрафт",
+        "тело долга",
+        "комиссия банка",
+        "ссуда",
     ]
     if any(k in desc_lower for k in debt_keywords):
         return TransactionCategory.DEBT_SERVICE
 
     # Дивиденды и распределение прибыли
     dividend_keywords = [
-        "dividend", "distribuire profit", "дивиденд", "выплата прибыли",
-        "распределение прибыли", "доход участник"
+        "dividend",
+        "distribuire profit",
+        "дивиденд",
+        "выплата прибыли",
+        "распределение прибыли",
+        "доход участник",
     ]
     if any(k in desc_lower for k in dividend_keywords):
         return TransactionCategory.DIVIDEND
 
     # Оплата поставщикам / контрагентам
     supplier_keywords = [
-        "furnizor", "supplier", "поставщик", "оплата товара", "закупка",
-        "по договору поставки", "счет-фактур", "акт выполнен", "накладная"
+        "furnizor",
+        "supplier",
+        "поставщик",
+        "оплата товара",
+        "закупка",
+        "по договору поставки",
+        "счет-фактур",
+        "акт выполнен",
+        "накладная",
     ]
     if any(k in desc_lower for k in supplier_keywords):
         return TransactionCategory.SUPPLIER_PAYMENT
@@ -267,9 +315,7 @@ class TransactionCategorizationMapper:
     Класс семантической классификации и приведения распарсенных строк к канонической форме.
     """
 
-    def map_categories_and_counterparties(
-        self, payload: ParsedBankStatementPayload
-    ) -> StandardizedTransactionBatch:
+    def map_categories_and_counterparties(self, payload: ParsedBankStatementPayload) -> StandardizedTransactionBatch:
         """
         Преобразует неструктурированные строки выписки в StandardizedTransactionBatch,
         назначая категории расходов и создавая канонические DTO для вставки в БД.

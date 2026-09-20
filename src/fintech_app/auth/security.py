@@ -20,9 +20,11 @@ import jwt
 
 try:
     from passlib.hash import argon2
+
     _has_argon2 = True
 except Exception:
     from passlib.hash import bcrypt as argon2
+
     _has_argon2 = False
 
 try:
@@ -40,11 +42,7 @@ SESSION_DURATION_SECONDS = 86400  # 24 hours
 
 def _get_secret_key() -> str:
     """Resolves secret key from settings, environment, or fallback default for tests."""
-    secret = (
-        getattr(settings, "session_secret_key", None)
-        or os.getenv("SECRET_KEY")
-        or DEFAULT_SECRET_KEY
-    )
+    secret = getattr(settings, "session_secret_key", None) or os.getenv("SECRET_KEY") or DEFAULT_SECRET_KEY
     return str(secret)
 
 

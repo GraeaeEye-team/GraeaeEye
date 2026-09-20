@@ -36,7 +36,7 @@ async def execute_orchestration_worker(
     tax_id: str,
     sector_code: str,
     files_data: List[Tuple[str, bytes]],
-    active_submodules: List[str],
+    active_submodules: Optional[List[str]] = None,
 ) -> None:
     """
     Asynchronous background worker executing ingestion and analytical evaluation.
@@ -125,6 +125,7 @@ async def execute_orchestration_worker(
             db=db,
             business_id=business_id,
             run_id=run_id,
+            active_submodules=active_submodules,
         )
 
         logger.info("Orchestration worker completed successfully for run %s", run_id)

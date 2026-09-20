@@ -14,7 +14,7 @@ import logging
 from typing import Any
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 
 from ..schemas import (
     ErrorResponse,
@@ -24,12 +24,6 @@ from ..schemas import (
 )
 
 from ..dependencies import get_db
-from ..schemas import (
-    ErrorResponse,
-    UserLoginRequest,
-    UserRegisterRequest,
-    UserResponse,
-)
 from ...auth.security import (
     create_session_token,
     hash_password,
@@ -66,24 +60,50 @@ MOCK_SESSION_TOKEN = "mock-session-token-phase1-secret"
     summary="User token authentication",
     description="Primary auth endpoint (Spec v2.0 §3.1). Authenticates user and attaches an HttpOnly, Secure session cookie.",
 )
+@router.post(
+    "/login",
+    response_model=UserResponse,
+    status_code=status.HTTP_200_OK,
+    include_in_schema=False,
+)
 async def login(
-    credentials: UserLoginRequest,
+    request: Request,
     response: Response,
     db: Any = Depends(get_db),
 ) -> UserResponse:
-    """Authenticates credentials against DAL or mock fixture and issues an HttpOnly cookie."""
+    """Authenticates credentials against DAL or mock fixture and issues an HttpOnly cookie and bearer token."""
+    content_type = request.headers.get("content-type", "").lower()
+    email_val = ""
+    password_val = ""
+
+    if "application/x-www-form-urlencoded" in content_type or "multipart/form-data" in content_type:
+        form_data = await request.form()
+        email_val = str(form_data.get("username") or form_data.get("email") or "").strip()
+        password_val = str(form_data.get("password") or "")
+    else:
+        try:
+            json_data = await request.json()
+            if isinstance(json_data, dict):
+                email_val = str(json_data.get("email") or json_data.get("username") or "").strip()
+                password_val = str(json_data.get("password") or "")
+        except Exception:
+            pass
+
+    if not email_val or not password_val:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"detail": "Username/email and password required.", "code": "VALIDATION_ERROR"},
+        )
+
     # 1. Fallback to mock behavior if database unavailable or mock mode enabled
     if db is None or settings.use_mock_engine:
-        if (
-            credentials.email != MOCK_USER_FIXTURE["email"]
-            or credentials.password != MOCK_USER_FIXTURE["password"]
-        ):
+        if email_val != MOCK_USER_FIXTURE["email"] or password_val != MOCK_USER_FIXTURE["password"]:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={"detail": "Invalid email or password.", "code": "INVALID_CREDENTIALS"},
             )
 
-        logger.info("User login successful (mock) for email '%s'", credentials.email)
+        logger.info("User login successful (mock) for email '%s'", email_val)
 
         response.set_cookie(
             key=COOKIE_NAME,
@@ -96,16 +116,18 @@ async def login(
 
         return UserResponse(
             user_id=MOCK_USER_FIXTURE["user_id"],
-            email=credentials.email,
+            email=email_val,
             full_name=MOCK_USER_FIXTURE["full_name"],
             role=MOCK_USER_FIXTURE["role"],
             is_active=True,
+            access_token=MOCK_SESSION_TOKEN,
+            token_type="bearer",
         )
 
     # 2. Real Authentication Path via Data Access Layer
-    user_rep = await db.get_records_from_users(find_only_first=True, email=credentials.email)
+    user_rep = await db.get_records_from_users(find_only_first=True, email=email_val)
     if not user_rep.success or not user_rep.data:
-        logger.warning("Authentication failed: user '%s' not found", credentials.email)
+        logger.warning("Authentication failed: user '%s' not found", email_val)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"detail": "Invalid email or password.", "code": "INVALID_CREDENTIALS"},
@@ -113,15 +135,15 @@ async def login(
 
     user = user_rep.data
     stored_hash = user.get("password_hash", "")
-    if not verify_password(credentials.password, stored_hash):
-        logger.warning("Authentication failed: password mismatch for user '%s'", credentials.email)
+    if not verify_password(password_val, stored_hash):
+        logger.warning("Authentication failed: password mismatch for user '%s'", email_val)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"detail": "Invalid email or password.", "code": "INVALID_CREDENTIALS"},
         )
 
     if not user.get("is_active", True):
-        logger.warning("Authentication rejected: inactive account for user '%s'", credentials.email)
+        logger.warning("Authentication rejected: inactive account for user '%s'", email_val)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"detail": "User account is inactive.", "code": "INVALID_CREDENTIALS"},
@@ -152,6 +174,8 @@ async def login(
         full_name=full_name,
         role=role,
         is_active=True,
+        access_token=jwt_token,
+        token_type="bearer",
     )
 
 
@@ -217,6 +241,8 @@ async def register(
             full_name=name_clean,
             role="ANALYST",
             is_active=True,
+            access_token=MOCK_SESSION_TOKEN,
+            token_type="bearer",
         )
 
     # 3. Real DAL Registration Path
@@ -272,4 +298,6 @@ async def register(
         full_name=name_clean,
         role=role,
         is_active=True,
+        access_token=jwt_token,
+        token_type="bearer",
     )
