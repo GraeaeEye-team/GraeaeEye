@@ -13,7 +13,6 @@ D. Auth hardening: missing session cookie triggers 401 UNAUTHORIZED on stream an
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
 import json
 import os
 import sys
@@ -284,7 +283,6 @@ async def test_gate3_mock_mode_regression():
     assert st == 202
     resp = json.loads(b.decode("utf-8"))
     assert "run_id" in resp
-    run_id = resp["run_id"]
 
     # 2. Upload >5 files -> 422 TOO_MANY_FILES
     six_files = [(f"f_{i}.csv", "data\n1\n") for i in range(6)]

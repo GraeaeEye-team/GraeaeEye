@@ -113,8 +113,8 @@ async def test_fixtures_seeding_idempotency(capsys: Any):
 
         captured_2 = capsys.readouterr()
         assert "exists" in captured_2.out
-        assert f"Profile 'good_sme' with tax_id '1001001001001' already exists" in captured_2.out
-        assert f"Profile 'risky_sme' with tax_id '1002002002002' already exists" in captured_2.out
+        assert "Profile 'good_sme' with tax_id '1001001001001' already exists" in captured_2.out
+        assert "Profile 'risky_sme' with tax_id '1002002002002' already exists" in captured_2.out
 
         # Identical business IDs returned
         assert good_id_1 == good_id_2
