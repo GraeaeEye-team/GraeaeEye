@@ -12,15 +12,15 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 from uuid import UUID, uuid4
 
-from fintech_app.core.config import settings
-from fintech_app.core.exceptions import ParsingError
-from fintech_app.ingestion.ai_mapper import TransactionCategorizationMapper
-from fintech_app.ingestion.external_intel import ExternalIntelligenceCollector
-from fintech_app.ingestion.parser import (
+from ..core.config import settings
+from ..core.exceptions import ParsingError
+from .ai_mapper import TransactionCategorizationMapper
+from .external_intel import ExternalIntelligenceCollector
+from .parser import (
     BankStatementParser,
     generate_mock_transaction_batch,
 )
-from fintech_app.ingestion.schemas import (
+from .schemas import (
     IngestionResult,
     ParsedBankStatementPayload,
     StandardizedTransactionBatch,

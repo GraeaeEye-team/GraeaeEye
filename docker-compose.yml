@@ -48,6 +48,11 @@ services:
         condition: service_healthy
     networks:
       - internal_net
+    develop:
+      watch:
+        - action: sync
+          path: src/fintech_app
+          target: /app
 
   db-backup:
     build:

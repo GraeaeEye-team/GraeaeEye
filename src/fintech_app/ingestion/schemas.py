@@ -12,7 +12,7 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from fintech_app.shared.schemas.user_types import (
+from ..shared.schemas.user_types import (
     LiquidityClass,
     TransactionCategory,
     TransactionDirection,

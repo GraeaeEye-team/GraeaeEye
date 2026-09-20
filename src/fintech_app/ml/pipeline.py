@@ -12,34 +12,19 @@ import math
 from typing import Any, Optional
 from uuid import UUID
 
-try:
-    from src.fintech_app.db.connection import Database
-    from src.fintech_app.ml.base import EvaluationStatus, SubmoduleResult
-    from src.fintech_app.ml.loader import CompanyDataLoader
-    from src.fintech_app.ml.scoring import CreditScoringEngine, CreditScoringResult
-    from src.fintech_app.ml.submodule_ownership import OwnershipStructureEvaluator
-    from src.fintech_app.ml.submodule_reputation import WebReputationEvaluator
-    from src.fintech_app.ml.submodule_macro import MacroSectorRiskEvaluator
-    from src.fintech_app.ml.submodule_client_dep import ClientDependencyEvaluator
-    from src.fintech_app.ml.submodule_supplier_dep import SupplierDependencyEvaluator
-    from src.fintech_app.ml.submodule_cash_readiness import ImmediateCashReadinessEvaluator
-    from src.fintech_app.ml.submodule_cash_stability import CashflowStabilityEvaluator
-    from src.fintech_app.ml.submodule_receivables import ReceivablesQualityEvaluator
-    from src.fintech_app.ml.submodule_credit_discipline import CreditDisciplineLeverageEvaluator
-except ModuleNotFoundError:
-    from fintech_app.db.connection import Database
-    from fintech_app.ml.base import EvaluationStatus, SubmoduleResult
-    from fintech_app.ml.loader import CompanyDataLoader
-    from fintech_app.ml.scoring import CreditScoringEngine, CreditScoringResult
-    from fintech_app.ml.submodule_ownership import OwnershipStructureEvaluator
-    from fintech_app.ml.submodule_reputation import WebReputationEvaluator
-    from fintech_app.ml.submodule_macro import MacroSectorRiskEvaluator
-    from fintech_app.ml.submodule_client_dep import ClientDependencyEvaluator
-    from fintech_app.ml.submodule_supplier_dep import SupplierDependencyEvaluator
-    from fintech_app.ml.submodule_cash_readiness import ImmediateCashReadinessEvaluator
-    from fintech_app.ml.submodule_cash_stability import CashflowStabilityEvaluator
-    from fintech_app.ml.submodule_receivables import ReceivablesQualityEvaluator
-    from fintech_app.ml.submodule_credit_discipline import CreditDisciplineLeverageEvaluator
+from ..db.connection import Database
+from .base import EvaluationStatus, SubmoduleResult
+from .loader import CompanyDataLoader
+from .scoring import CreditScoringEngine, CreditScoringResult
+from .submodule_ownership import OwnershipStructureEvaluator
+from .submodule_reputation import WebReputationEvaluator
+from .submodule_macro import MacroSectorRiskEvaluator
+from .submodule_client_dep import ClientDependencyEvaluator
+from submodule_supplier_dep import SupplierDependencyEvaluator
+from .submodule_cash_readiness import ImmediateCashReadinessEvaluator
+from .submodule_cash_stability import CashflowStabilityEvaluator
+from .submodule_receivables import ReceivablesQualityEvaluator
+from .submodule_credit_discipline import CreditDisciplineLeverageEvaluator
 
 logger: logging.Logger = logging.getLogger("smart_credit.ml")
 

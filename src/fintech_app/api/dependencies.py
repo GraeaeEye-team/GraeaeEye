@@ -13,17 +13,13 @@ import logging
 from typing import Any, AsyncGenerator, Generator, Optional
 from uuid import UUID
 
+
 from fastapi import HTTPException, Request, status
 import jwt
 
-try:
-    from fintech_app.api.schemas import CurrentUser
-    from fintech_app.auth.security import decode_session_token
-    from fintech_app.core.config import settings
-except ModuleNotFoundError:
-    from src.fintech_app.api.schemas import CurrentUser
-    from src.fintech_app.auth.security import decode_session_token
-    from src.fintech_app.core.config import settings
+from .schemas import CurrentUser
+from ..auth.security import decode_session_token
+from ..core.config import settings
 
 logger = logging.getLogger("fintech_app.api.dependencies")
 

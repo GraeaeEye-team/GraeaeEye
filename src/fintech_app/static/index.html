@@ -1,25 +1,70 @@
 <!DOCTYPE html>
-<html lang="ru_RU">
+<html lang="en">
 <head>
 	<title>GraeaeEye</title>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link rel="stylesheet" href="/static/styles.css">
 	<script src="/static/scripts.js"></script>
-	<script>
-		function upd_status() {
-			var x = document.getElementById("status");
-			fetch("/health")
-				.then((response) => response.json())
-				.then((json) => x.innerHTML = json.status == "ok" ? json.service + " is ok" : "Internal error!" );
-		}
-		/* document.addEventListener('DOMContentLoaded', function() { upd_status(); }, false); */
-	</script>
+	<link rel="shortcut icon" href="/static/favicon.ico" type="image/x-icon">
 </head>
 <body>
-	<center class="splash"><h1>GraeaeEye SPA</h1></center>
+	<h1 class="splash">GraeaeEye SPA</h1>
 	<div id="main">
-		<button onclick="upd_status()">health:</button><span id="status"></span>
+
+		<nav id="cfg-panel">
+			<button id="theming" class="iconic" onclick="upd_theme()">Th</button>
+		</nav>
+
+		<div id="auth">
+			<div id="auth-guest">
+				<p>Вы не вошли в систему</p>
+
+				<details id="details-signin">
+					<summary>Sign in</summary>
+					<form id="login-form">
+						<div>
+							<label for="login-email">Email:</label>
+							<input type="email" id="login-email" required placeholder="analyst@graeae.eye">
+						</div>
+						<div>
+							<label for="login-password">Password:</label>
+							<input type="password" id="login-password" required placeholder="••••••••">
+						</div>
+						<button type="submit">Sign in</button>
+						<div id="login-error" class="error"></div>
+					</form>
+				</details>
+
+				<details id="details-register">
+					<summary>Register</summary>
+					<form id="register-form">
+						<div>
+							<label for="register-name">Full Name:</label>
+							<input type="text" id="register-name" required placeholder="Alexander Hamilton">
+						</div>
+						<div>
+							<label for="register-email">Email:</label>
+							<input type="email" id="register-email" required placeholder="analyst@graeae.eye">
+						</div>
+						<div>
+							<label for="register-password">Password:</label>
+							<input type="password" id="register-password" required placeholder="••••••••">
+						</div>
+						<button type="submit">Register</button>
+						<div id="register-error" class="error"></div>
+					</form>
+				</details>
+			</div>
+
+			<div id="auth-logged-in" style="display: none;">
+				<p>Вы вошли как: <b id="user-name"></b> (<span id="user-role"></span>)</p>
+				<p>Email: <span id="user-email"></span></p>
+				<form id="logout-form">
+					<button type="submit">Quit</button>
+				</form>
+			</div>
+		</div>
 	</div>
 </body>
 </html>

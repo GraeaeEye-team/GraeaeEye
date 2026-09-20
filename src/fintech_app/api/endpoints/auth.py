@@ -16,34 +16,26 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Response, status
 
-try:
-    from fintech_app.api.dependencies import get_db
-    from fintech_app.api.schemas import (
-        ErrorResponse,
-        UserLoginRequest,
-        UserRegisterRequest,
-        UserResponse,
-    )
-    from fintech_app.auth.security import (
-        create_session_token,
-        hash_password,
-        verify_password,
-    )
-    from fintech_app.core.config import settings
-except ModuleNotFoundError:
-    from src.fintech_app.api.dependencies import get_db
-    from src.fintech_app.api.schemas import (
-        ErrorResponse,
-        UserLoginRequest,
-        UserRegisterRequest,
-        UserResponse,
-    )
-    from src.fintech_app.auth.security import (
-        create_session_token,
-        hash_password,
-        verify_password,
-    )
-    from src.fintech_app.core.config import settings
+from ..schemas import (
+    ErrorResponse,
+    UserLoginRequest,
+    UserRegisterRequest,
+    UserResponse,
+)
+
+from ..dependencies import get_db
+from ..schemas import (
+    ErrorResponse,
+    UserLoginRequest,
+    UserRegisterRequest,
+    UserResponse,
+)
+from ...auth.security import (
+    create_session_token,
+    hash_password,
+    verify_password,
+)
+from ...core.config import settings
 
 logger = logging.getLogger("fintech_app.api.auth")
 
