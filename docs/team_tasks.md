@@ -300,7 +300,7 @@ directory layout in `docs/folders_structure.md`, background tasks invoke the dec
 1. **FastAPI Application Setup:** In `src/fintech_app/main.py`, configure FastAPI with CORS
    middleware, lifespan events for database pool connection, and mount `/static` for assets.
 2. **Contract Route Declarations:** Declare all core endpoints returning mocked payloads:
-   - `POST /api/v1/auth/login`
+   - `POST /api/v1/auth/token` (primary, per Web Spec v2.0 §3.1; /login alias withdrawn pre-merge)
    - `POST /api/v1/auth/register`
    - `POST /api/v1/analysis/start`
    - `GET /api/v1/analysis/stream/{run_id}`
