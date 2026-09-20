@@ -125,8 +125,8 @@ async def start_analysis(
         ...,
         description='JSON array of active submodule codes, e.g. ["OS","WPR","MSR","CD","SD","ICR","CFS","RQ","ICDL"]',
     ),
-    files: Optional[List[UploadFile]] = File(
-        default=None, description="Uploaded CSV financial ledgers (max 5)"
+    files: List[UploadFile] = File(
+        ..., description="Uploaded CSV financial ledgers (max 5)"
     ),
     current_user: CurrentUser = Depends(get_current_user),
     db: Any = Depends(get_db),

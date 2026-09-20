@@ -338,7 +338,8 @@ async def test_gate3_db_unavailable_503():
         "sector_code": "6201",
         "active_submodules": "[]",
     }
-    body, ct = build_multipart(fields, [])
+    files = [("accounts.csv", "id,balance\n1,1000.0\n")]
+    body, ct = build_multipart(fields, files)
 
     # POST /start -> 503
     st, _, b = await asgi_call("POST", "/api/v1/analysis/start", {"content-type": ct, "cookie": MOCK_COOKIE}, body)
