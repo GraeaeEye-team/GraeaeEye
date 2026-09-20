@@ -4,15 +4,27 @@ class ConfigSingleton {
 	}
 
 	async set(name, value) {
-		await cookieStore.set(name, value);
+		if (typeof cookieStore !== 'undefined') {
+			try {
+				await cookieStore.set(name, value);
+				return;
+			} catch (e) {
+				console.warn("cookieStore.set failed:", e);
+				try {
+					localStorage.setItem(name, value);
+				} catch {}
+			}
+		}
+
 	}
 
 	async get(name, defaultValue) {
 		try {
 			const vvalue = await cookieStore.get(name);
-			return vvalue !== undefined ? vvalue.value : defaultValue;
+			return vvalue !== undefined && vvalue.value !== undefined ? vvalue.value : defaultValue;
 		} catch {
-			return defaultValue;
+			const local = localStorage.getItem(name);
+			return (local !== null) ? local : defaultValue;
 		}
 	}
 

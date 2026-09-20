@@ -26,16 +26,16 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 
-from fintech_app.api.dependencies import get_current_user
-from fintech_app.api.mock_provider import mock_analysis_provider
-from fintech_app.api.schemas import (
+from ..dependencies import get_current_user
+from ..mock_provider import mock_analysis_provider
+from ..schemas import (
     AnalysisReportResponse,
     AnalysisStartResponse,
     CurrentUser,
     ErrorResponse,
     HealthResponse,
 )
-from fintech_app.shared.schemas.user_types import AnalysisStatus
+from ...shared.schemas.user_types import AnalysisStatus
 
 logger = logging.getLogger(__name__)
 

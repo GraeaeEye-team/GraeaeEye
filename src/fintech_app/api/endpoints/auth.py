@@ -11,7 +11,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, HTTPException, Response, status
 
-from fintech_app.api.schemas import (
+from ..schemas import (
     ErrorResponse,
     UserLoginRequest,
     UserRegisterRequest,

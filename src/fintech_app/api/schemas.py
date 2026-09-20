@@ -14,7 +14,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from fintech_app.shared.schemas.user_types import AnalysisStatus
+from ..shared.schemas.user_types import AnalysisStatus
 
 # =====================================================================
 # 1. STANDARDIZED ERROR ENVELOPE (Rule P10)
