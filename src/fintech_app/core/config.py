@@ -2,6 +2,7 @@
 Конфигурация параметров приложения.
 Загружает переменные окружения из .env (параметры подключения к PostgreSQL, API-ключи).
 """
+
 import os
 from dataclasses import dataclass
 
@@ -10,9 +11,7 @@ from dataclasses import dataclass
 class Settings:
     app_env: str = os.getenv("APP_ENV", "development")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
-    use_mock_engine: bool = (
-        os.getenv("USE_MOCK_ENGINE", "false").lower() in ("true", "1", "yes")
-    )
+    use_mock_engine: bool = os.getenv("USE_MOCK_ENGINE", "false").lower() in ("true", "1", "yes")
 
     postgres_server: str = os.getenv("POSTGRES_SERVER", "localhost")
     postgres_port: int = int(os.getenv("POSTGRES_PORT", "5432"))
@@ -35,4 +34,3 @@ class Settings:
 
 
 settings = Settings()
-

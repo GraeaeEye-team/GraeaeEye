@@ -2,6 +2,7 @@
 Централизованная настройка логирования (logging).
 Форматирует вывод логов приложения в консоль и файлы журнала.
 """
+
 import logging
 import sys
 
@@ -13,4 +14,3 @@ if not logger.handlers:
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-

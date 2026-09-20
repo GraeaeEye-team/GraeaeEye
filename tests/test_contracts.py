@@ -96,9 +96,7 @@ def build_multipart(fields: Dict[str, str], files: List[Tuple[str, str | bytes]]
         buf.write(f"{value}\r\n".encode("utf-8"))
     for filename, content in files:
         buf.write(f"--{boundary}\r\n".encode("utf-8"))
-        buf.write(
-            f'Content-Disposition: form-data; name="files"; filename="{filename}"\r\n'.encode("utf-8")
-        )
+        buf.write(f'Content-Disposition: form-data; name="files"; filename="{filename}"\r\n'.encode("utf-8"))
         buf.write(b"Content-Type: application/octet-stream\r\n\r\n")
         buf.write(content.encode("utf-8") if isinstance(content, str) else content)
         buf.write(b"\r\n")
@@ -199,9 +197,7 @@ async def test_status_codes_mapping():
         assert data_401.get("code") == "UNAUTHORIZED"
 
         # B. 404 RUN_NOT_FOUND (unknown analysis run id)
-        st_404, _, b_404 = await asgi_call(
-            "GET", f"/api/v1/analysis/report/{uuid4()}", {"cookie": MOCK_COOKIE}
-        )
+        st_404, _, b_404 = await asgi_call("GET", f"/api/v1/analysis/report/{uuid4()}", {"cookie": MOCK_COOKIE})
         assert st_404 == 404
         data_404 = json.loads(b_404.decode("utf-8"))
         assert data_404.get("code") == "RUN_NOT_FOUND"
@@ -211,10 +207,7 @@ async def test_status_codes_mapping():
         mock_token_val = MOCK_COOKIE.split("session_token=")[1]
         client.cookies.set("session_token", mock_token_val)
 
-        six_files = [
-            ("files", (f"file_{i}.csv", b"col\nval\n", "text/csv"))
-            for i in range(6)
-        ]
+        six_files = [("files", (f"file_{i}.csv", b"col\nval\n", "text/csv")) for i in range(6)]
         resp_too_many = client.post(
             "/api/v1/analysis/start",
             data={

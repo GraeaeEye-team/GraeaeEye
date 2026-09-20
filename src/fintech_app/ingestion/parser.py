@@ -3,6 +3,7 @@
 Реализует безопасную работу с памятью (Streaming / Chunked Processing),
 очистку европейских и смешанных числовых форматов, валютных кодов и BOM-заголовков.
 """
+
 from __future__ import annotations
 
 import csv
@@ -33,6 +34,8 @@ from fintech_app.ingestion.ai_mapper import (
 from fintech_app.ingestion.schemas import (
     NormalizedTransactionRecord,
     ParsedBankStatementPayload,
+    ParsedCreditObligationRecord,
+    ParsedInvoiceRecord,
     ParsedJudicialRecord,
     RawBankStatementLine,
     StandardizedTransactionBatch,
@@ -73,7 +76,7 @@ def clean_amount_string(val: Any) -> Tuple[Decimal, Optional[TransactionDirectio
     elif raw.startswith("+"):
         raw = raw[1:].strip()
 
-    cleaned = re.sub(r"[A-Za-zА-Яа-я\$€₽£¥]", "", raw).strip()
+    cleaned = re.sub(r"[A-Za-zА-Яа-я\$€\u20bd£¥]", "", raw).strip()
     cleaned = cleaned.replace("\xa0", "").replace(" ", "")
 
     if not cleaned:
@@ -301,7 +304,26 @@ class BankStatementParser:
 
         total_inflow = sum((l.amount for l in lines if l.direction == TransactionDirection.INFLOW), Decimal("0.00"))
         total_outflow = sum((l.amount for l in lines if l.direction == TransactionDirection.OUTFLOW), Decimal("0.00"))
-        opening_balance = Decimal("100000.00")
+
+        # Extract dynamic opening balance from statement header / metadata (Zero Hardcode)
+        opening_balance = Decimal("0.00")
+        bal_match = re.search(
+            r"(?:sold\s+initial|sold\s+precedent|opening\s+balance|initial\s+balance|sold\s+deschidere)"
+            r"[:\s]+([+-]?[0-9\s,\.]+)",
+            text,
+            re.IGNORECASE,
+        )
+        if bal_match:
+            try:
+                raw_bal_str = bal_match.group(1).strip()
+                parsed_bal, inferred_dir = clean_amount_string(raw_bal_str)
+                if raw_bal_str.startswith("-") or inferred_dir == TransactionDirection.OUTFLOW:
+                    opening_balance = -abs(parsed_bal)
+                else:
+                    opening_balance = abs(parsed_bal)
+            except Exception:
+                opening_balance = Decimal("0.00")
+
         closing_balance = (opening_balance + total_inflow - total_outflow).quantize(Decimal("0.01"))
 
         return ParsedBankStatementPayload(
@@ -342,12 +364,33 @@ class BankStatementParser:
 
         header_row: Optional[List[str]] = None
         header_mapping: Optional[Dict[str, str]] = None
+        detected_opening_balance: Optional[Decimal] = None
         row_iter = ws.iter_rows(values_only=True)
 
         for row in row_iter:
             str_cells = [str(c).strip() if c is not None else "" for c in row]
             if not any(str_cells):
                 continue
+
+            row_joined = " ".join(str_cells)
+            bal_match = re.search(
+                r"(?:sold\s+initial|sold\s+precedent|opening\s+balance|initial\s+balance|sold\s+deschidere)"
+                r"[:\s]+([+-]?[0-9\s,\.]+)",
+                row_joined,
+                re.IGNORECASE,
+            )
+            if bal_match and detected_opening_balance is None:
+                try:
+                    raw_bal = bal_match.group(1).strip()
+                    parsed_b, inf_dir = clean_amount_string(raw_bal)
+                    detected_opening_balance = (
+                        -abs(parsed_b)
+                        if (raw_bal.startswith("-") or inf_dir == TransactionDirection.OUTFLOW)
+                        else abs(parsed_b)
+                    )
+                except Exception:
+                    pass
+
             mapping = fuzzy_map_headers(str_cells)
             mapped_values = set(mapping.values())
             has_amount = "amount" in mapped_values or ("debit" in mapped_values and "credit" in mapped_values)
@@ -456,7 +499,7 @@ class BankStatementParser:
 
         total_inflow = sum((l.amount for l in lines if l.direction == TransactionDirection.INFLOW), Decimal("0.00"))
         total_outflow = sum((l.amount for l in lines if l.direction == TransactionDirection.OUTFLOW), Decimal("0.00"))
-        opening_balance = Decimal("100000.00")
+        opening_balance = detected_opening_balance if detected_opening_balance is not None else Decimal("0.00")
         closing_balance = (opening_balance + total_inflow - total_outflow).quantize(Decimal("0.01"))
 
         return ParsedBankStatementPayload(
@@ -477,7 +520,7 @@ class BankStatementParser:
     ) -> ParsedBankStatementPayload:
         """
         Парсинг выписки из PDF-документа.
-        При отсутствии встроенного OCR извлекает текстовые строки или генерирует синтетический валидный батч.
+        При отсутствии встроенного OCR извлекает текстовые строки или выбрасывает ParsingError.
         """
         try:
             text = file_content.decode("latin-1", errors="ignore")
@@ -488,8 +531,8 @@ class BankStatementParser:
         except Exception:
             pass
 
-        logger.info("PDF direct text extraction not conclusive, returning synthetic valid batch.")
-        return generate_mock_bank_statement_payload(business_id=business_id, account_id=account_id)
+        logger.error("PDF direct text extraction failed: no valid statement records found.")
+        raise ParsingError("PDF parsing failed: file contains no extractable bank statement transaction lines.")
 
 
 class JudicialRegistryParser:
@@ -497,9 +540,7 @@ class JudicialRegistryParser:
     Парсер судебных записей и реестра задолженностей из внешних источников.
     """
 
-    def parse_court_registry_response(
-        self, raw_response: Dict[str, Any]
-    ) -> List[ParsedJudicialRecord]:
+    def parse_court_registry_response(self, raw_response: Dict[str, Any]) -> List[ParsedJudicialRecord]:
         """
         Преобразует JSON-ответ судебного реестра в список строго валидированных ParsedJudicialRecord.
         """
@@ -540,78 +581,472 @@ class JudicialRegistryParser:
         return results
 
 
-def generate_mock_bank_statement_payload(
-    business_id: Optional[UUID] = None,
-    account_id: Optional[UUID] = None,
-    count: int = 50,
-) -> ParsedBankStatementPayload:
+class InvoiceParser:
     """
-    Генерирует синтетическую банковскую выписку для немедленного тестирования смежников.
+    Парсер счетов-фактур и реестров накладных (invoices.csv / xlsx).
+    Разбирает дебиторскую/кредиторскую задолженность, сроки оплаты и статусы.
     """
-    b_id = business_id or uuid4()
-    a_id = account_id or uuid4()
 
-    start_d = date.today() - timedelta(days=90)
-    lines: List[RawBankStatementLine] = []
+    def parse_csv(
+        self,
+        file_content: Union[bytes, str],
+        business_id: Optional[UUID] = None,
+    ) -> List[ParsedInvoiceRecord]:
+        if isinstance(file_content, bytes):
+            try:
+                text = file_content.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                try:
+                    text = file_content.decode("cp1251")
+                except UnicodeDecodeError:
+                    text = file_content.decode("latin-1")
+        else:
+            text = file_content
 
-    descriptions = [
-        ("Оплата за поставку стройматериалов по накладной 450", Decimal("45000.00"), TransactionDirection.OUTFLOW),
-        ("Зачисление выручки от покупателей за услуги консалтинга", Decimal("120000.00"), TransactionDirection.INFLOW),
-        ("Выплата заработной платы за прошлый месяц", Decimal("35000.00"), TransactionDirection.OUTFLOW),
-        ("Уплата НДС и подоходного налога в бюджет", Decimal("18500.00"), TransactionDirection.OUTFLOW),
-        ("Погашение процентов по кредитному договору № 12", Decimal("8200.00"), TransactionDirection.OUTFLOW),
-        ("Оплата аренды офиса и серверных мощностей", Decimal("15000.00"), TransactionDirection.OUTFLOW),
-        ("Поступление средств по договору поставки от ООО 'Альфа'", Decimal("85000.00"), TransactionDirection.INFLOW),
-    ]
+        if not text.strip():
+            raise ParsingError("Uploaded invoice CSV is completely empty.")
 
-    for i in range(count):
-        desc, amt, direction = descriptions[i % len(descriptions)]
-        variance = Decimal(str((i % 7) * 150 + 25))
-        actual_amt = (amt + variance).quantize(Decimal("0.01"))
-        tx_d = start_d + timedelta(days=int(i * 1.8))
+        stream = io.StringIO(text)
+        sample = text[:4096]
+        delimiter = ","
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=[",", ";", "\t", "|"])
+            delimiter = dialect.delimiter
+        except Exception:
+            for cand in [";", "\t", ","]:
+                if sample.count(cand) > sample.count(delimiter):
+                    delimiter = cand
 
-        lines.append(
-            RawBankStatementLine(
-                date=tx_d,
-                amount=actual_amt,
-                direction=direction,
-                description=desc,
-                counterparty_raw_name=f"Контрагент №{i % 8 + 1}",
-                counterparty_tax_id=f"10026000000{i % 8 + 1}",
-                account_number="MD24AG000000022518001001",
-                currency="MDL",
+        reader = csv.reader(stream, delimiter=delimiter)
+        header: Optional[List[str]] = None
+        for row in reader:
+            if any(cell.strip() for cell in row):
+                header = [c.strip().lower() for c in row]
+                break
+
+        if not header:
+            raise ParsingError("Could not locate valid header row in invoice file.")
+
+        col_map: Dict[str, int] = {}
+        for idx, col in enumerate(header):
+            col_norm = re.sub(r"[^\w]", "", col.strip().lower().replace(" ", "_"))
+            if any(k in col_norm for k in ("counterparty_role", "role", "rol", "роль")):
+                col_map.setdefault("counterparty_role", idx)
+            elif any(k in col_norm for k in ("invoice_type", "type", "tip", "тип", "вид")):
+                col_map.setdefault("invoice_type", idx)
+            elif any(
+                k in col_norm
+                for k in (
+                    "actual_payment_date",
+                    "payment_date",
+                    "paid_date",
+                    "data_platii",
+                    "data_achitarii",
+                    "дата_оплаты",
+                    "дата_платежа",
+                    "оплачено_дата",
+                )
+            ):
+                col_map.setdefault("actual_payment_date", idx)
+            elif any(
+                k in col_norm
+                for k in ("due_date", "term", "deadline", "scadenta", "scadență", "termen", "срок", "срок_оплаты")
+            ):
+                col_map.setdefault("due_date", idx)
+            elif any(
+                k in col_norm
+                for k in (
+                    "issue_date",
+                    "date",
+                    "data",
+                    "data_facturii",
+                    "data_emiterii",
+                    "дата_выписки",
+                    "дата_счета",
+                    "дата",
+                )
+            ):
+                col_map.setdefault("issue_date", idx)
+            elif any(
+                k in col_norm
+                for k in ("gross_amount", "amount", "total", "sum", "suma", "sumă", "valoare", "сумма", "всего", "итог")
+            ):
+                col_map.setdefault("gross_amount", idx)
+            elif any(k in col_norm for k in ("status", "stare", "statut", "статус", "состояние")):
+                col_map.setdefault("status", idx)
+            elif any(
+                k in col_norm
+                for k in (
+                    "counterparty_name",
+                    "counterparty",
+                    "client",
+                    "supplier",
+                    "partner",
+                    "cumparator",
+                    "cumpărător",
+                    "furnizor",
+                    "partener",
+                    "контрагент",
+                    "клиент",
+                    "поставщик",
+                    "партнер",
+                    "покупатель",
+                    "наименование",
+                )
+            ):
+                col_map.setdefault("counterparty_name", idx)
+
+        if "counterparty_name" not in col_map or "gross_amount" not in col_map:
+            raise ParsingError("Missing mandatory columns ('counterparty_name', 'gross_amount') in invoice CSV.")
+
+        records: List[ParsedInvoiceRecord] = []
+        for row in reader:
+            if not any(cell.strip() for cell in row):
+                continue
+            cp_name = row[col_map["counterparty_name"]].strip() if col_map["counterparty_name"] < len(row) else ""
+            if not cp_name:
+                continue
+
+            raw_amt = row[col_map["gross_amount"]].strip() if col_map["gross_amount"] < len(row) else ""
+            try:
+                amt, _ = clean_amount_string(raw_amt)
+            except ParsingError:
+                continue
+
+            cp_role = "CLIENT"
+            if "counterparty_role" in col_map and col_map["counterparty_role"] < len(row):
+                r_val = row[col_map["counterparty_role"]].strip().upper()
+                if r_val in ("SUPPLIER", "FURNIZOR", "PRESTATOR", "ПОСТАВЩИК", "ИСПОЛНИТЕЛЬ"):
+                    cp_role = "SUPPLIER"
+                elif r_val in ("BOTH", "AMBELE", "ОБА", "СМЕШАННЫЙ"):
+                    cp_role = "BOTH"
+                elif r_val in ("CLIENT", "CUMPARATOR", "КЛИЕНТ", "ПОКУПАТЕЛЬ"):
+                    cp_role = "CLIENT"
+
+            inv_type = "RECEIVABLE"
+            if "invoice_type" in col_map and col_map["invoice_type"] < len(row):
+                t_val = row[col_map["invoice_type"]].strip().upper()
+                if t_val in ("PAYABLE", "INTRARE", "FURNIZARE", "DEBIT", "ВХОДЯЩИЙ", "РАСХОД", "ЗАКУПКА"):
+                    inv_type = "PAYABLE"
+                elif t_val in ("RECEIVABLE", "IESIRE", "VANZARE", "CREDIT", "ИСХОДЯЩИЙ", "ДОХОД", "ПРОДАЖА"):
+                    inv_type = "RECEIVABLE"
+
+            issue_d = date.today()
+            if "issue_date" in col_map and col_map["issue_date"] < len(row):
+                try:
+                    issue_d = parse_date_flexible(row[col_map["issue_date"]].strip())
+                except ParsingError:
+                    pass
+
+            due_d = issue_d + timedelta(days=30)
+            if "due_date" in col_map and col_map["due_date"] < len(row):
+                try:
+                    due_d = parse_date_flexible(row[col_map["due_date"]].strip())
+                except ParsingError:
+                    pass
+
+            act_pay_d = None
+            if "actual_payment_date" in col_map and col_map["actual_payment_date"] < len(row):
+                raw_act = row[col_map["actual_payment_date"]].strip()
+                if raw_act:
+                    try:
+                        act_pay_d = parse_date_flexible(raw_act)
+                    except ParsingError:
+                        pass
+
+            status = "OUTSTANDING"
+            if "status" in col_map and col_map["status"] < len(row):
+                s_val = row[col_map["status"]].strip().upper()
+                if s_val in ("PAID", "SETTLED", "ACHITAT", "PLATIT", "ОПЛАЧЕН", "ОПЛАЧЕНО", "ЗАКРЫТ"):
+                    status = "SETTLED"
+                elif s_val in ("OVERDUE", "EXPIRAT", "INTARZIAT", "ПРОСРОЧЕН", "ПРОСРОЧЕНО"):
+                    status = "OVERDUE"
+                elif s_val in ("DEFAULTED", "DEFAULT", "ДЕФОЛТ"):
+                    status = "DEFAULTED"
+                elif s_val in ("DISPUTED", "DISPUTA", "СПОРНЫЙ"):
+                    status = "DISPUTED"
+                elif s_val in ("OUTSTANDING", "NEACHITAT", "НЕ ОПЛАЧЕН", "НЕОПЛАЧЕН", "ОТКРЫТ"):
+                    status = "OUTSTANDING"
+                elif s_val in ("PAID", "SETTLED", "OUTSTANDING", "OVERDUE", "DEFAULTED", "DISPUTED"):
+                    status = s_val
+
+            records.append(
+                ParsedInvoiceRecord(
+                    counterparty_name=cp_name,
+                    counterparty_role=cp_role,
+                    invoice_type=inv_type,
+                    gross_amount=amt,
+                    issue_date=issue_d,
+                    due_date=due_d,
+                    actual_payment_date=act_pay_d,
+                    status=status,
+                )
             )
-        )
 
-    inflow_sum = sum((l.amount for l in lines if l.direction == TransactionDirection.INFLOW), Decimal("0.00"))
-    outflow_sum = sum((l.amount for l in lines if l.direction == TransactionDirection.OUTFLOW), Decimal("0.00"))
-    opening = Decimal("250000.00")
-    closing = (opening + inflow_sum - outflow_sum).quantize(Decimal("0.01"))
+        if not records:
+            raise ParsingError("Invoice CSV parsed 0 valid invoice records.")
+        return records
 
-    return ParsedBankStatementPayload(
-        account_id=a_id,
-        business_id=b_id,
-        opening_balance=opening,
-        closing_balance=closing,
-        period_start=start_d,
-        period_end=lines[-1].date if lines else date.today(),
-        lines=lines,
-    )
+    def parse_xlsx(
+        self,
+        file_content: bytes,
+        business_id: Optional[UUID] = None,
+    ) -> List[ParsedInvoiceRecord]:
+        if openpyxl is None:
+            raise RuntimeError("openpyxl must be installed to parse xlsx workbooks.")
+        wb = openpyxl.load_workbook(io.BytesIO(file_content), data_only=True, read_only=True)
+        ws = wb.active
+        if ws is None:
+            wb.close()
+            raise ParsingError("Workbook has no active sheet.")
+        rows = list(ws.iter_rows(values_only=True))
+        wb.close()
+        out = io.StringIO()
+        writer = csv.writer(out)
+        for r in rows:
+            if any(r):
+                writer.writerow([str(c) if c is not None else "" for c in r])
+        return self.parse_csv(out.getvalue(), business_id=business_id)
 
 
-def generate_mock_transaction_batch(
-    business_id: Optional[UUID] = None,
-    account_id: Optional[UUID] = None,
-    count: int = 50,
-) -> StandardizedTransactionBatch:
+class CreditObligationParser:
     """
-    Генерирует готовый пакет StandardizedTransactionBatch с каноническими записями.
+    Парсер кредитных обязательств и займов (obligations.csv / xlsx).
+    Разбирает остаток долга, регулярный платеж и историю просрочек.
     """
-    payload = generate_mock_bank_statement_payload(
-        business_id=business_id, account_id=account_id, count=count
-    )
-    mapper = TransactionCategorizationMapper()
-    return mapper.map_categories_and_counterparties(payload)
+
+    def parse_csv(
+        self,
+        file_content: Union[bytes, str],
+        business_id: Optional[UUID] = None,
+    ) -> List[ParsedCreditObligationRecord]:
+        if isinstance(file_content, bytes):
+            try:
+                text = file_content.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                try:
+                    text = file_content.decode("cp1251")
+                except UnicodeDecodeError:
+                    text = file_content.decode("latin-1")
+        else:
+            text = file_content
+
+        if not text.strip():
+            raise ParsingError("Uploaded credit obligation CSV is completely empty.")
+
+        stream = io.StringIO(text)
+        sample = text[:4096]
+        delimiter = ","
+        try:
+            dialect = csv.Sniffer().sniff(sample, delimiters=[",", ";", "\t", "|"])
+            delimiter = dialect.delimiter
+        except Exception:
+            for cand in [";", "\t", ","]:
+                if sample.count(cand) > sample.count(delimiter):
+                    delimiter = cand
+
+        reader = csv.reader(stream, delimiter=delimiter)
+        header: Optional[List[str]] = None
+        for row in reader:
+            if any(cell.strip() for cell in row):
+                header = [c.strip().lower() for c in row]
+                break
+
+        if not header:
+            raise ParsingError("Could not locate valid header row in credit obligations file.")
+
+        col_map: Dict[str, int] = {}
+        for idx, col in enumerate(header):
+            col_norm = re.sub(r"[^\w]", "", col.strip().lower().replace(" ", "_"))
+            if any(
+                k in col_norm
+                for k in (
+                    "facility_type",
+                    "facility",
+                    "type",
+                    "credit_type",
+                    "tip_credit",
+                    "tip",
+                    "вид_кредита",
+                    "тип",
+                    "продукт",
+                )
+            ):
+                col_map.setdefault("facility_type", idx)
+            elif any(
+                k in col_norm
+                for k in (
+                    "principal_amount",
+                    "principal",
+                    "loan_amount",
+                    "credit_limit",
+                    "suma_credit",
+                    "valoare",
+                    "сумма_кредита",
+                    "лимит",
+                    "основной_долг",
+                    "сумма",
+                )
+            ):
+                col_map.setdefault("principal_amount", idx)
+            elif any(
+                k in col_norm
+                for k in (
+                    "outstanding_balance",
+                    "outstanding",
+                    "balance",
+                    "remaining_balance",
+                    "debt",
+                    "sold",
+                    "rest_de_plata",
+                    "datorie",
+                    "остаток",
+                    "остаток_долга",
+                    "задолженность",
+                )
+            ):
+                col_map.setdefault("outstanding_balance", idx)
+            elif any(
+                k in col_norm
+                for k in (
+                    "monthly_payment",
+                    "payment",
+                    "installment",
+                    "rata_lunara",
+                    "plata",
+                    "ежемесячный_платеж",
+                    "платеж",
+                    "взнос",
+                )
+            ):
+                col_map.setdefault("monthly_payment", idx)
+            elif any(k in col_norm for k in ("past_due_30d", "overdue_30", "intarziere_30", "просрочка_30")):
+                col_map.setdefault("past_due_30d_count", idx)
+            elif any(k in col_norm for k in ("past_due_90d", "overdue_90", "intarziere_90", "просрочка_90")):
+                col_map.setdefault("past_due_90d_count", idx)
+            elif any(k in col_norm for k in ("historical_default", "defaults", "defaulturi", "дефолт", "дефолты")):
+                col_map.setdefault("historical_defaults_count", idx)
+            elif any(
+                k in col_norm
+                for k in (
+                    "lender_name",
+                    "lender",
+                    "bank_name",
+                    "creditor",
+                    "banca",
+                    "кредитор",
+                    "банк",
+                    "займодавец",
+                    "наименование",
+                )
+            ):
+                col_map.setdefault("lender_name", idx)
+
+        if "lender_name" not in col_map or "principal_amount" not in col_map:
+            raise ParsingError("Missing mandatory columns ('lender_name', 'principal_amount') in obligations CSV.")
+
+        records: List[ParsedCreditObligationRecord] = []
+        for row in reader:
+            if not any(cell.strip() for cell in row):
+                continue
+            lender = row[col_map["lender_name"]].strip() if col_map["lender_name"] < len(row) else ""
+            if not lender:
+                continue
+
+            try:
+                principal, _ = clean_amount_string(row[col_map["principal_amount"]].strip())
+            except Exception:
+                continue
+
+            facility_type = "TERM_LOAN"
+            if "facility_type" in col_map and col_map["facility_type"] < len(row):
+                ft_val = row[col_map["facility_type"]].strip().upper()
+                if ft_val in ("CREDIT_LINE", "LINE_OF_CREDIT", "LINIE_DE_CREDIT", "КРЕДИТНАЯ_ЛИНИЯ", "ЛИНИЯ"):
+                    facility_type = "CREDIT_LINE"
+                elif ft_val in ("OVERDRAFT", "DESCOPERIT_DE_CONT", "ОВЕРДРАФТ"):
+                    facility_type = "OVERDRAFT"
+                elif ft_val in ("LEASING", "LEASING_FINANCIAR", "ЛИЗИНГ"):
+                    facility_type = "LEASING"
+                elif ft_val in ("FACTORING", "ФАКТОРИНГ"):
+                    facility_type = "FACTORING"
+                elif ft_val in ("TERM_LOAN", "CREDIT_TERMEN", "IMPRUMUT", "КРЕДИТ", "ЗАЙМ"):
+                    facility_type = "TERM_LOAN"
+                elif ft_val in ("TERM_LOAN", "CREDIT_LINE", "LINE_OF_CREDIT", "OVERDRAFT", "LEASING", "FACTORING"):
+                    facility_type = ft_val
+
+            outstanding = principal
+            if "outstanding_balance" in col_map and col_map["outstanding_balance"] < len(row):
+                try:
+                    outstanding, _ = clean_amount_string(row[col_map["outstanding_balance"]].strip())
+                except Exception:
+                    pass
+
+            monthly = Decimal("0.00")
+            if "monthly_payment" in col_map and col_map["monthly_payment"] < len(row):
+                try:
+                    monthly, _ = clean_amount_string(row[col_map["monthly_payment"]].strip())
+                except Exception:
+                    pass
+
+            def parse_int(val_str: str) -> int:
+                try:
+                    return max(0, int(val_str.strip()))
+                except Exception:
+                    return 0
+
+            p30 = (
+                parse_int(row[col_map["past_due_30d_count"]])
+                if "past_due_30d_count" in col_map and col_map["past_due_30d_count"] < len(row)
+                else 0
+            )
+            p90 = (
+                parse_int(row[col_map["past_due_90d_count"]])
+                if "past_due_90d_count" in col_map and col_map["past_due_90d_count"] < len(row)
+                else 0
+            )
+            defaults = (
+                parse_int(row[col_map["historical_defaults_count"]])
+                if "historical_defaults_count" in col_map and col_map["historical_defaults_count"] < len(row)
+                else 0
+            )
+
+            records.append(
+                ParsedCreditObligationRecord(
+                    lender_name=lender,
+                    facility_type=facility_type,
+                    principal_amount=principal,
+                    outstanding_balance=outstanding,
+                    monthly_payment=monthly,
+                    past_due_30d_count=p30,
+                    past_due_90d_count=p90,
+                    historical_defaults_count=defaults,
+                )
+            )
+
+        if not records:
+            raise ParsingError("Credit obligation CSV parsed 0 valid records.")
+        return records
+
+    def parse_xlsx(
+        self,
+        file_content: bytes,
+        business_id: Optional[UUID] = None,
+    ) -> List[ParsedCreditObligationRecord]:
+        if openpyxl is None:
+            raise RuntimeError("openpyxl must be installed to parse xlsx workbooks.")
+        wb = openpyxl.load_workbook(io.BytesIO(file_content), data_only=True, read_only=True)
+        ws = wb.active
+        if ws is None:
+            wb.close()
+            raise ParsingError("Workbook has no active sheet.")
+        rows = list(ws.iter_rows(values_only=True))
+        wb.close()
+        out = io.StringIO()
+        writer = csv.writer(out)
+        for r in rows:
+            if any(r):
+                writer.writerow([str(c) if c is not None else "" for c in r])
+        return self.parse_csv(out.getvalue(), business_id=business_id)
 
 
 def load_file_to_dataframe(file_path: str) -> Any:

@@ -3,6 +3,7 @@ Pydantic-схемы валидации распарсенных данных (Da
 Гарантируют строгую типизацию (Decimal, UUID, date) и чистоту входных данных
 перед маппингом и сохранением в реляционный граф PostgreSQL через DAL.
 """
+
 from __future__ import annotations
 
 from datetime import date, datetime
@@ -23,6 +24,7 @@ class RawBankStatementLine(BaseModel):
     """
     Сырая распарсенная строка выписки после извлечения из CSV / XLSX.
     """
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     date: date
@@ -48,6 +50,7 @@ class ParsedBankStatementPayload(BaseModel):
     """
     Нормализованный пакет выписки одного банковского счета за расчетный период.
     """
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     account_id: UUID
@@ -72,6 +75,7 @@ class ParsedJudicialRecord(BaseModel):
     """
     Структурированная судебная запись, полученная из внешних реестров.
     """
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     case_number: str
@@ -94,6 +98,7 @@ class NormalizedTransactionRecord(BaseModel):
     """
     Каноническая запись транзакции для вставки в таблицу transactions PostgreSQL.
     """
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     transaction_id: UUID = Field(default_factory=uuid4)
@@ -123,6 +128,7 @@ class StandardizedTransactionBatch(BaseModel):
     """
     Готовый пакет нормализованных транзакций с агрегированными суммами притока и оттока.
     """
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     business_id: UUID
@@ -146,9 +152,7 @@ class StandardizedTransactionBatch(BaseModel):
                 "direction": t.direction.value if hasattr(t.direction, "value") else str(t.direction),
                 "category": t.category.value if hasattr(t.category, "value") else str(t.category),
                 "liquidity_class": (
-                    t.liquidity_class.value
-                    if hasattr(t.liquidity_class, "value")
-                    else str(t.liquidity_class)
+                    t.liquidity_class.value if hasattr(t.liquidity_class, "value") else str(t.liquidity_class)
                 ),
             }
             for t in self.transactions
@@ -159,6 +163,7 @@ class IngestionResult(BaseModel):
     """
     Итоговый контракт возврата результатов работы IngestionPipeline.
     """
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     success: bool
@@ -172,7 +177,62 @@ class IngestionResult(BaseModel):
 
 class NormalizedTransactionSchema(BaseModel):
     """Legacy compatibility schema for backward compatibility."""
+
     transaction_date: date
-    amount: float
+    amount: Decimal
     counterparty_inn: Optional[str] = None
     description: str = Field(default="")
+
+
+class ParsedInvoiceRecord(BaseModel):
+    """
+    Распарсенная запись счета-фактуры (invoices).
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    invoice_id: UUID = Field(default_factory=uuid4)
+    counterparty_name: str
+    counterparty_role: Optional[str] = "CLIENT"
+    invoice_type: str = "RECEIVABLE"
+    gross_amount: Decimal
+    issue_date: date
+    due_date: date
+    actual_payment_date: Optional[date] = None
+    status: str = "OUTSTANDING"
+
+    @field_validator("gross_amount", mode="before")
+    @classmethod
+    def coerce_amount(cls, v: Any) -> Decimal:
+        if isinstance(v, Decimal):
+            return abs(v).quantize(Decimal("0.01"))
+        if v is None:
+            raise ValueError("gross_amount cannot be None")
+        return abs(Decimal(str(v))).quantize(Decimal("0.01"))
+
+
+class ParsedCreditObligationRecord(BaseModel):
+    """
+    Распарсенная запись кредитного обязательства (credit_obligations).
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    obligation_id: UUID = Field(default_factory=uuid4)
+    lender_name: str
+    facility_type: str = "TERM_LOAN"
+    principal_amount: Decimal
+    outstanding_balance: Decimal
+    monthly_payment: Decimal
+    past_due_30d_count: int = 0
+    past_due_90d_count: int = 0
+    historical_defaults_count: int = 0
+
+    @field_validator("principal_amount", "outstanding_balance", "monthly_payment", mode="before")
+    @classmethod
+    def coerce_amounts(cls, v: Any) -> Decimal:
+        if isinstance(v, Decimal):
+            return abs(v).quantize(Decimal("0.01"))
+        if v is None:
+            return Decimal("0.00")
+        return abs(Decimal(str(v))).quantize(Decimal("0.01"))

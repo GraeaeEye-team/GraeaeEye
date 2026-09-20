@@ -49,6 +49,7 @@ from fintech_app.ml.scoring import CreditScoringEngine, CreditScoringResult
 # 1. BIJECTION & EXACT ORDERING OF 18D FEATURE VECTOR KEYS
 # =====================================================================
 
+
 def test_feature_vector_bijection_and_canonical_order():
     """Verifies that ML 18 features map 1:1 and in exact sequence to API keys."""
     ml_names = CreditScoringEngine.FEATURE_NAMES
@@ -59,9 +60,7 @@ def test_feature_vector_bijection_and_canonical_order():
 
     for idx, (ml_feat, api_key) in enumerate(zip(ml_names, api_keys)):
         # Must match via pure lowercasing
-        assert ml_feat.lower() == api_key, (
-            f"Mismatch at index {idx}: ML '{ml_feat}'.lower() != API '{api_key}'"
-        )
+        assert ml_feat.lower() == api_key, f"Mismatch at index {idx}: ML '{ml_feat}'.lower() != API '{api_key}'"
         # Check bidirectional helper functions
         assert ml_index_to_api(ml_feat) == api_key
         assert api_index_to_ml(api_key) == ml_feat
@@ -128,6 +127,7 @@ def test_invalid_submodule_code_raises_loudly():
 # 3. STATUS & VERDICT MAPPINGS (ALL 3 EVALUATION STATES)
 # =====================================================================
 
+
 def test_status_mapping_success():
     """EvaluationStatus.SUCCESS -> SubmoduleExecutionStatus.SUCCESS with preserved verdict."""
     st, v = map_submodule_status(EvaluationStatus.SUCCESS, "BALANCED_GOVERNANCE")
@@ -162,19 +162,29 @@ def test_status_mapping_error():
 # 4. FULL SYNTHETIC ML RESULT TO API RESPONSE CONVERSION
 # =====================================================================
 
+
 def _create_synthetic_ml_pipeline_result() -> UnderwritingPipelineResult:
     """Helper to generate a fully populated, realistic UnderwritingPipelineResult."""
     # 18 synthetic feature values
     fv_values = [
-        65.0, 45.0,  # OS
-        92.0, 80.0,  # WPR
-        71.5,        # MSR
-        48.0, 52.0,  # CD
-        84.0, 76.0,  # SD
-        82.5, 75.0,  # ICR
-        88.0, 62.0,  # CFS
-        70.0, 64.0,  # RQ
-        90.0, 85.0, 72.0,  # ICDL
+        65.0,
+        45.0,  # OS
+        92.0,
+        80.0,  # WPR
+        71.5,  # MSR
+        48.0,
+        52.0,  # CD
+        84.0,
+        76.0,  # SD
+        82.5,
+        75.0,  # ICR
+        88.0,
+        62.0,  # CFS
+        70.0,
+        64.0,  # RQ
+        90.0,
+        85.0,
+        72.0,  # ICDL
     ]
 
     sub_results = {
@@ -363,6 +373,7 @@ def test_full_synthetic_ml_result_to_api_response():
 # =====================================================================
 # 5. ERROR PATH CARD & DEGRADED PIPELINE HANDLING
 # =====================================================================
+
 
 def test_error_and_data_absent_submodules():
     """Verifies degraded status, error card, and bypassed card mapping."""

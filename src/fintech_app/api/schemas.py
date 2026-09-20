@@ -71,7 +71,6 @@ class SubmoduleExecutionStatus(StrEnum):
     DATA_ABSENT = "DATA_ABSENT"
 
 
-
 # Canonical 18 index keys in exact ordered sequence (Spec v2.0 §2)
 CANONICAL_18D_KEYS: List[str] = [
     "ownership_dispersion_index",
@@ -128,26 +127,28 @@ class FeatureVector(BaseModel):
 class UserLoginRequest(BaseModel):
     """Credentials payload for login and token requests."""
 
-    email: str = Field(..., example="analyst@graeae.eye")
-    password: str = Field(..., example="correct-horse-battery-staple")
+    email: str = Field(..., examples=["analyst@graeae.eye"])
+    password: str = Field(..., examples=["correct-horse-battery-staple"])
 
 
 class UserRegisterRequest(BaseModel):
     """Registration payload for new users."""
 
-    email: str = Field(..., example="analyst@graeae.eye")
-    password: str = Field(..., example="correct-horse-battery-staple")
-    full_name: str = Field(..., example="Alexander Hamilton")
+    email: str = Field(..., examples=["analyst@graeae.eye"])
+    password: str = Field(..., examples=["correct-horse-battery-staple"])
+    full_name: str = Field(default="Analyst User", examples=["Alexander Hamilton"])
 
 
 class UserResponse(BaseModel):
-    """Public user profile response (never echoes tokens or passwords)."""
+    """Public user profile response with session authentication metadata."""
 
     user_id: UUID
     email: str
     full_name: str
     role: str = "ANALYST"
     is_active: bool = True
+    access_token: Optional[str] = Field(default=None, description="JWT session token for headless or bearer clients.")
+    token_type: Optional[str] = Field(default="bearer", description="Token type schema.")
 
 
 class CurrentUser(BaseModel):

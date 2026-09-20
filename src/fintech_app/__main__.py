@@ -2,6 +2,7 @@
 Точка входа веб-приложения FastAPI, как модуля python.
 См. main.py
 """
+
 import uvicorn
 
 from fintech_app.main import app

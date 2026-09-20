@@ -3,6 +3,7 @@ Submodule 4.2: Web Presence & Legal Reputation Evaluator (WPR).
 Evaluates open lawsuits, claims amount against liquid cash, sanctions check,
 and news sentiment to detect reputational and legal risks.
 """
+
 from typing import Any
 
 try:
@@ -48,9 +49,7 @@ class WebReputationEvaluator(BaseSubmoduleEvaluator):
                 },
                 summary="No web reputation data present.",
                 diagnostic_report=(
-                    "[SUBMODULE 4.2: WEB PRESENCE & LEGAL REPUTATION]\n"
-                    "STATUS: DATA_ABSENT\n"
-                    "VERDICT: DATA_ABSENT"
+                    "[SUBMODULE 4.2: WEB PRESENCE & LEGAL REPUTATION]\n" "STATUS: DATA_ABSENT\n" "VERDICT: DATA_ABSENT"
                 ),
             )
 

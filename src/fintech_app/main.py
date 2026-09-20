@@ -5,6 +5,7 @@ Configures async lifespan for defensive database pooling, global CORS middleware
 static files mount for frontend templates, standardized P10 error handlers,
 and registers API v1 routes.
 """
+
 from contextlib import asynccontextmanager
 import logging
 import os
@@ -41,21 +42,40 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             db_inst = app.state.db
             if hasattr(db_inst, "open") and not getattr(db_inst, "is_open", False):
                 await db_inst.open()
+            if hasattr(db_inst, "apply_schema_if_needed"):
+                await db_inst.apply_schema_if_needed()
             db_pool = db_inst
             logger.info("Injected database instance opened successfully.")
         else:
             try:
-                from fintech_app.db.mock_connection import MockDatabase
+                from fintech_app.db.connection import Database
 
-                db_inst = MockDatabase.get_instance()
-                await db_inst.open()
-                db_pool = db_inst
+                real_db = Database.get_instance()
+                await real_db.open(wait=True, timeout=1.5)
+                await real_db.apply_schema_if_needed()
+                db_pool = real_db
                 app.state.db = db_pool
-                logger.info("MockDatabase opened successfully for in-process execution.")
-            except Exception as exc:
-                logger.warning("Database initialization failed: %s. DB remains unavailable.", exc)
-                db_pool = None
-                app.state.db = None
+                logger.info("Real PostgreSQL Database connected and verified successfully.")
+            except Exception as real_exc:
+                logger.warning(
+                    "Real Database connection failed (%s). Falling back to MockDatabase.",
+                    real_exc,
+                )
+                try:
+                    from fintech_app.db.mock_connection import MockDatabase
+
+                    mock_inst = MockDatabase.get_instance()
+                    await mock_inst.open()
+                    db_pool = mock_inst
+                    app.state.db = db_pool
+                    logger.info("MockDatabase opened successfully for in-process execution.")
+                except Exception as exc:
+                    logger.error(
+                        "Database initialization failed: %s. DB remains unavailable.",
+                        exc,
+                    )
+                    db_pool = None
+                    app.state.db = None
     else:
         logger.info("Operating in mock engine mode (use_mock_engine=True).")
         if not hasattr(app.state, "db"):
@@ -145,9 +165,7 @@ async def http_exception_handler(request: Request, exc: HTTPException) -> JSONRe
 
 
 @app.exception_handler(RequestValidationError)
-async def validation_exception_handler(
-    request: Request, exc: RequestValidationError
-) -> JSONResponse:
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     """Standardizes request validation failures into {"detail": str, "code": "VALIDATION_ERROR"}."""
     error_messages = []
     for err in exc.errors():

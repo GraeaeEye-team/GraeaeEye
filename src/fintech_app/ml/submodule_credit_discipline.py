@@ -3,6 +3,7 @@ Submodule 4.9: Credit Discipline & Leverage Evaluator (ICDL).
 Evaluates past delinquencies penalties (30d/90d DPD, defaults), Debt Service Coverage Ratio (DSCR),
 and Debt-to-Cash Flow Leverage (DCFL).
 """
+
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -99,9 +100,7 @@ class CreditDisciplineLeverageEvaluator(BaseSubmoduleEvaluator):
         operating_cash_flow = max(0.0, annual_inflows - annual_opex)
 
         # 3. Debt Service Coverage Ratio (DSCR)
-        annual_debt_service = sum(
-            float(getattr(ob, "monthly_payment", 0.0)) * 12.0 for ob in obligations
-        )
+        annual_debt_service = sum(float(getattr(ob, "monthly_payment", 0.0)) * 12.0 for ob in obligations)
         dscr = operating_cash_flow / max(annual_debt_service, 1.0)
         dscr_idx = clamp((dscr / 2.0) * 100.0)  # DSCR >= 2.0 gives 100.0
 
@@ -141,10 +140,7 @@ class CreditDisciplineLeverageEvaluator(BaseSubmoduleEvaluator):
                 "Debt_Service_Coverage_Index": dscr_idx,
                 "Solvency_Leverage_Index": solvency_leverage_idx,
             },
-            summary=(
-                f"Repayment Discipline: {repayment_discipline_idx:.1f}, "
-                f"DSCR: {dscr:.2f}, DCFL: {dcfl:.1f}x."
-            ),
+            summary=(f"Repayment Discipline: {repayment_discipline_idx:.1f}, " f"DSCR: {dscr:.2f}, DCFL: {dcfl:.1f}x."),
             diagnostic_report=report,
         )
 

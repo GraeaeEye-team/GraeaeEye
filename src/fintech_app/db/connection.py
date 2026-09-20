@@ -6,10 +6,11 @@ Specification: docs/database_architecture-v2.md
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
@@ -84,6 +85,7 @@ class Database:
                 max_size=max_size,
                 max_idle=max_idle,
                 open=False,
+                timeout=5.0,
                 kwargs={"row_factory": dict_row},
             )
             self._managed_pool = True
@@ -98,16 +100,52 @@ class Database:
         if self._managed_pool and self.pool is not None:
             await self.pool.close()
 
+    def reset(self) -> None:
+        """Compatibility method for test resetting (no-op in production pool mode)."""
+        pass
+
     async def health_check(self) -> bool:
         """Verifies database connectivity by executing SELECT 1."""
         try:
-            async with self.pool.connection() as conn:
+            async with self.pool.connection(timeout=2.0) as conn:
                 async with conn.cursor() as cur:
                     await cur.execute("SELECT 1;")
                     res = await cur.fetchone()
                     return res is not None
         except Exception as exc:
             logger.warning("Database health check failed: %s", exc)
+            return False
+
+    async def apply_schema_if_needed(self, schema_path: Optional[str] = None) -> bool:
+        """
+        Self-healing DDL check: checks if 'businesses' table exists.
+        If missing, executes schema.sql to ensure all 13 canonical tables are provisioned.
+        """
+        try:
+            async with self.pool.connection(timeout=3.0) as conn:
+                async with conn.cursor() as cur:
+                    await cur.execute(
+                        "SELECT EXISTS ("
+                        "  SELECT 1 FROM information_schema.tables "
+                        "  WHERE table_schema = 'public' AND table_name = 'businesses'"
+                        ");"
+                    )
+                    row = await cur.fetchone()
+                    table_exists = row and (row.get("exists") if isinstance(row, dict) else row[0])
+                    if not table_exists:
+                        logger.info("Database schema not initialized. Applying schema.sql...")
+                        p = Path(schema_path) if schema_path else (Path(__file__).resolve().parent / "schema.sql")
+                        if p.exists():
+                            ddl = p.read_text(encoding="utf-8")
+                            async with conn.transaction():
+                                await cur.execute(ddl)
+                            logger.info("Successfully applied schema.sql (13 canonical tables created).")
+                            return True
+                        logger.warning("schema.sql file not found at %s", p)
+                        return False
+                    return True
+        except Exception as exc:
+            logger.warning("apply_schema_if_needed encountered error: %s", exc)
             return False
 
     async def __aenter__(self) -> Database:
@@ -126,9 +164,7 @@ class Database:
     # CORE EXECUTION HELPERS
     # =========================================================================
 
-    def _build_where_clause(
-        self, filters: Dict[str, Any]
-    ) -> Tuple[sql.Composed, List[Any]]:
+    def _build_where_clause(self, filters: Dict[str, Any]) -> Tuple[sql.Composed, List[Any]]:
         """
         Dynamically constructs parameterized WHERE conditions from a filter dictionary.
         """
@@ -165,17 +201,13 @@ class Database:
                     vals.append(v)
 
             if returning:
-                query = sql.SQL(
-                    "INSERT INTO {table} ({cols}) VALUES ({placeholders}) RETURNING *;"
-                ).format(
+                query = sql.SQL("INSERT INTO {table} ({cols}) VALUES ({placeholders}) RETURNING *;").format(
                     table=sql.Identifier(table_name),
                     cols=sql.SQL(", ").join(sql.Identifier(c) for c in cols),
                     placeholders=sql.SQL(", ").join(sql.Placeholder() for _ in cols),
                 )
             else:
-                query = sql.SQL(
-                    "INSERT INTO {table} ({cols}) VALUES ({placeholders});"
-                ).format(
+                query = sql.SQL("INSERT INTO {table} ({cols}) VALUES ({placeholders});").format(
                     table=sql.Identifier(table_name),
                     cols=sql.SQL(", ").join(sql.Identifier(c) for c in cols),
                     placeholders=sql.SQL(", ").join(sql.Placeholder() for _ in cols),
@@ -230,14 +262,8 @@ class Database:
             if order_by:
                 parts = order_by.strip().split()
                 col_part = sql.Identifier(parts[0])
-                dir_part = (
-                    sql.SQL("DESC")
-                    if len(parts) > 1 and parts[1].upper() == "DESC"
-                    else sql.SQL("ASC")
-                )
-                query_parts.append(
-                    sql.SQL(" ORDER BY ") + col_part + sql.SQL(" ") + dir_part
-                )
+                dir_part = sql.SQL("DESC") if len(parts) > 1 and parts[1].upper() == "DESC" else sql.SQL("ASC")
+                query_parts.append(sql.SQL(" ORDER BY ") + col_part + sql.SQL(" ") + dir_part)
 
             if limit is not None:
                 query_parts.append(sql.SQL(" LIMIT %s"))
@@ -334,9 +360,7 @@ class Database:
             where_sql, where_values = self._build_where_clause(filters)
             all_values = set_values + where_values
 
-            query = sql.SQL(
-                "UPDATE {table} SET {assignments} {where_clause} RETURNING *;"
-            ).format(
+            query = sql.SQL("UPDATE {table} SET {assignments} {where_clause} RETURNING *;").format(
                 table=sql.Identifier(table_name),
                 assignments=sql.SQL(", ").join(set_clauses),
                 where_clause=where_sql,
@@ -376,8 +400,7 @@ class Database:
             where_sql, where_values = self._build_where_clause(filters)
             if delete_only_first:
                 query = sql.SQL(
-                    "DELETE FROM {table} WHERE ctid IN ("
-                    "SELECT ctid FROM {table} {where_clause} LIMIT 1);"
+                    "DELETE FROM {table} WHERE ctid IN (" "SELECT ctid FROM {table} {where_clause} LIMIT 1);"
                 ).format(
                     table=sql.Identifier(table_name),
                     where_clause=where_sql,
@@ -423,8 +446,31 @@ class Database:
         total_board_seats: int = 1,
         independent_directors_count: int = 0,
     ) -> DatabaseReport:
-        data = {
-            "business_id": business_id or uuid4(),
+        """
+        Idempotent insert into businesses table using ON CONFLICT (tax_id) DO UPDATE.
+        Guarantees zero UniqueViolation and returns the existing or created record.
+        """
+        bid = business_id or uuid4()
+        query = sql.SQL(
+            "INSERT INTO businesses ("
+            "  business_id, tax_id, legal_name, industry_code, registration_date, "
+            "  total_board_seats, independent_directors_count"
+            ") VALUES ({}, {}, {}, {}, {}, {}, {}) "
+            "ON CONFLICT (tax_id) DO UPDATE SET "
+            "  legal_name = EXCLUDED.legal_name, "
+            "  industry_code = EXCLUDED.industry_code "
+            "RETURNING *;"
+        ).format(
+            sql.Placeholder("business_id"),
+            sql.Placeholder("tax_id"),
+            sql.Placeholder("legal_name"),
+            sql.Placeholder("industry_code"),
+            sql.Placeholder("registration_date"),
+            sql.Placeholder("total_board_seats"),
+            sql.Placeholder("independent_directors_count"),
+        )
+        params = {
+            "business_id": bid,
             "tax_id": tax_id,
             "legal_name": legal_name,
             "industry_code": industry_code,
@@ -432,7 +478,28 @@ class Database:
             "total_board_seats": total_board_seats,
             "independent_directors_count": independent_directors_count,
         }
-        return await self._execute_insert("businesses", data)
+        try:
+            async with self.pool.connection() as conn:
+                async with conn.transaction():
+                    async with conn.cursor(row_factory=dict_row) as cur:
+                        await cur.execute(query, params)
+                        row = await cur.fetchone()
+                        return DatabaseReport(
+                            success=True,
+                            data=row,
+                            affected_rows=1,
+                            operation="INSERT",
+                            table_name="businesses",
+                        )
+        except Exception as exc:
+            logger.error("Idempotent insert failed on businesses: %s", exc, exc_info=True)
+            return DatabaseReport(
+                success=False,
+                error=str(exc),
+                affected_rows=0,
+                operation="INSERT",
+                table_name="businesses",
+            )
 
     async def get_records_from_businesses(
         self,
@@ -461,9 +528,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "businesses", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("businesses", filters, delete_only_first=delete_only_first)
 
     # --- Table: shareholders ---
     async def add_record_to_shareholders(
@@ -510,9 +575,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "shareholders", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("shareholders", filters, delete_only_first=delete_only_first)
 
     # =========================================================================
     # CLUSTER 2: EXTERNAL INTELLIGENCE & MACRO DATA
@@ -533,7 +596,7 @@ class Database:
         data = {
             "record_id": record_id or uuid4(),
             "business_id": business_id,
-            "scan_timestamp": scan_timestamp or datetime.now(),
+            "scan_timestamp": scan_timestamp or datetime.now(timezone.utc),
             "active_lawsuits_count": active_lawsuits_count,
             "total_lawsuit_claims_amount": total_lawsuit_claims_amount,
             "is_in_sanctions_list": is_in_sanctions_list,
@@ -570,9 +633,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "web_reputation", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("web_reputation", filters, delete_only_first=delete_only_first)
 
     # --- Table: macro_sector_metrics ---
     async def add_record_to_macro_sector_metrics(
@@ -622,9 +683,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "macro_sector_metrics", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("macro_sector_metrics", filters, delete_only_first=delete_only_first)
 
     # =========================================================================
     # CLUSTER 3: COMMERCIAL GRAPH & CASH FLOW LEDGER
@@ -675,9 +734,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "counterparties", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("counterparties", filters, delete_only_first=delete_only_first)
 
     # --- Table: invoices ---
     async def add_record_to_invoices(
@@ -733,9 +790,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "invoices", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("invoices", filters, delete_only_first=delete_only_first)
 
     # --- Table: bank_accounts ---
     async def add_record_to_bank_accounts(
@@ -782,9 +837,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "bank_accounts", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("bank_accounts", filters, delete_only_first=delete_only_first)
 
     # --- Table: transactions ---
     async def add_record_to_transactions(
@@ -842,9 +895,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "transactions", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("transactions", filters, delete_only_first=delete_only_first)
 
     # =========================================================================
     # CLUSTER 4: LIABILITIES & DEBT FACILITIES
@@ -869,17 +920,11 @@ class Database:
             "business_id": business_id,
             "lender_name": lender_name,
             "facility_type": facility_type,
-            "principal_amount": (
-                abs(principal_amount) if principal_amount is not None else principal_amount
-            ),
+            "principal_amount": (abs(principal_amount) if principal_amount is not None else principal_amount),
             "outstanding_balance": (
-                abs(outstanding_balance)
-                if outstanding_balance is not None
-                else outstanding_balance
+                abs(outstanding_balance) if outstanding_balance is not None else outstanding_balance
             ),
-            "monthly_payment": (
-                abs(monthly_payment) if monthly_payment is not None else monthly_payment
-            ),
+            "monthly_payment": (abs(monthly_payment) if monthly_payment is not None else monthly_payment),
             "past_due_30d_count": past_due_30d_count,
             "past_due_90d_count": past_due_90d_count,
             "historical_defaults_count": historical_defaults_count,
@@ -913,9 +958,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "credit_obligations", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("credit_obligations", filters, delete_only_first=delete_only_first)
 
     # =========================================================================
     # CLUSTER 5: WEB APPLICATION IDENTITY & EXECUTION TELEMETRY
@@ -968,9 +1011,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "users", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("users", filters, delete_only_first=delete_only_first)
 
     # --- Table: user_settings ---
     async def add_record_to_user_settings(
@@ -1017,9 +1058,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "user_settings", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("user_settings", filters, delete_only_first=delete_only_first)
 
     # --- Table: analysis_runs ---
     async def add_record_to_analysis_runs(
@@ -1089,9 +1128,7 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "analysis_runs", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("analysis_runs", filters, delete_only_first=delete_only_first)
 
     # --- Table: analysis_logs ---
     async def add_record_to_analysis_logs(
@@ -1108,7 +1145,7 @@ class Database:
             "severity": severity,
             "stage": stage,
             "message": message,
-            "timestamp": timestamp or datetime.now(),
+            "timestamp": timestamp or datetime.now(timezone.utc),
         }
         if log_id is not None:
             data["log_id"] = log_id
@@ -1142,17 +1179,13 @@ class Database:
         delete_only_first: bool = False,
         **filters: Any,
     ) -> DatabaseReport:
-        return await self._execute_delete(
-            "analysis_logs", filters, delete_only_first=delete_only_first
-        )
+        return await self._execute_delete("analysis_logs", filters, delete_only_first=delete_only_first)
 
     # =========================================================================
     # HIGH-VELOCITY BULK INGESTION VIA CURSOR.COPY()
     # =========================================================================
 
-    async def bulk_insert_transactions(
-        self, records: List[Dict[str, Any]]
-    ) -> DatabaseReport:
+    async def bulk_insert_transactions(self, records: List[Dict[str, Any]]) -> DatabaseReport:
         """
         High-velocity bulk streaming insertion into transactions table using cursor.copy().
         """
@@ -1193,26 +1226,16 @@ class Database:
                                 cp_id = r.get("counterparty_id")
                                 inv_id = r.get("invoice_id")
                                 ts = r["timestamp"]
-                                amt = (
-                                    Decimal(str(r["amount"]))
-                                    if not isinstance(r["amount"], Decimal)
-                                    else r["amount"]
-                                )
+                                amt = Decimal(str(r["amount"])) if not isinstance(r["amount"], Decimal) else r["amount"]
                                 amt = abs(amt)
                                 direction = (
-                                    r["direction"].value
-                                    if hasattr(r["direction"], "value")
-                                    else str(r["direction"])
+                                    r["direction"].value if hasattr(r["direction"], "value") else str(r["direction"])
                                 )
                                 category = (
-                                    r["category"].value
-                                    if hasattr(r["category"], "value")
-                                    else str(r["category"])
+                                    r["category"].value if hasattr(r["category"], "value") else str(r["category"])
                                 )
                                 liq = r.get("liquidity_class", "IMMEDIATE_CASH")
-                                liquidity_class = (
-                                    liq.value if hasattr(liq, "value") else str(liq)
-                                )
+                                liquidity_class = liq.value if hasattr(liq, "value") else str(liq)
 
                                 row = (
                                     tx_id,
@@ -1244,9 +1267,7 @@ class Database:
                 table_name="transactions",
             )
 
-    async def bulk_insert_invoices(
-        self, records: List[Dict[str, Any]]
-    ) -> DatabaseReport:
+    async def bulk_insert_invoices(self, records: List[Dict[str, Any]]) -> DatabaseReport:
         """
         High-velocity bulk streaming insertion into invoices table using cursor.copy().
         """
@@ -1297,11 +1318,7 @@ class Database:
                                 issue_date = r["issue_date"]
                                 due_date = r["due_date"]
                                 actual_payment_date = r.get("actual_payment_date")
-                                status = (
-                                    r["status"].value
-                                    if hasattr(r["status"], "value")
-                                    else str(r["status"])
-                                )
+                                status = r["status"].value if hasattr(r["status"], "value") else str(r["status"])
 
                                 row = (
                                     inv_id,

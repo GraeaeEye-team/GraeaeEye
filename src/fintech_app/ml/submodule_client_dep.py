@@ -3,6 +3,7 @@ Submodule 4.4: Client Dependency Evaluator (CD).
 Calculates customer concentration (Customer_HHI) and top buyer exposure ratios (CR1, CR3)
 over the trailing 12-month period from the evaluation snapshot.
 """
+
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import Any
@@ -57,10 +58,7 @@ class ClientDependencyEvaluator(BaseSubmoduleEvaluator):
             status = str(getattr(inv, "status", "")).upper()
             if inv_type == "RECEIVABLE" and status in ("SETTLED", "PAID"):
                 # Check period if date attribute exists
-                doc_date = (
-                    getattr(inv, "actual_payment_date", None)
-                    or getattr(inv, "issue_date", None)
-                )
+                doc_date = getattr(inv, "actual_payment_date", None) or getattr(inv, "issue_date", None)
                 if isinstance(doc_date, datetime):
                     doc_date = doc_date.date()
                 if doc_date is not None and (doc_date < start_date or doc_date > as_of_date):
@@ -79,9 +77,7 @@ class ClientDependencyEvaluator(BaseSubmoduleEvaluator):
                 },
                 summary="No receivable invoice records present.",
                 diagnostic_report=(
-                    "[SUBMODULE 4.4: CLIENT DEPENDENCY]\n"
-                    "STATUS: DATA_ABSENT\n"
-                    "VERDICT: DATA_ABSENT"
+                    "[SUBMODULE 4.4: CLIENT DEPENDENCY]\n" "STATUS: DATA_ABSENT\n" "VERDICT: DATA_ABSENT"
                 ),
             )
 
@@ -106,9 +102,7 @@ class ClientDependencyEvaluator(BaseSubmoduleEvaluator):
                 },
                 summary="Total commercial revenue is zero.",
                 diagnostic_report=(
-                    "[SUBMODULE 4.4: CLIENT DEPENDENCY]\n"
-                    "STATUS: DATA_ABSENT\n"
-                    "VERDICT: DATA_ABSENT"
+                    "[SUBMODULE 4.4: CLIENT DEPENDENCY]\n" "STATUS: DATA_ABSENT\n" "VERDICT: DATA_ABSENT"
                 ),
             )
 
@@ -118,7 +112,7 @@ class ClientDependencyEvaluator(BaseSubmoduleEvaluator):
         shares = [(float(amt) / total_rev) * 100.0 for _, amt in sorted_clients]
 
         # 3. Customer Herfindahl-Hirschman Index (Customer_HHI)
-        customer_hhi = sum(s ** 2 for s in shares)
+        customer_hhi = sum(s**2 for s in shares)
 
         # 4. Top-1 (CR1) and Top-3 (CR3) Concentration Ratios
         cr1 = shares[0] if shares else 0.0
@@ -138,9 +132,7 @@ class ClientDependencyEvaluator(BaseSubmoduleEvaluator):
 
         # Build counterparty names lookup for informative reporting
         cp_names = {
-            str(getattr(cp, "counterparty_id", "")): getattr(
-                cp, "legal_name", str(getattr(cp, "counterparty_id", ""))
-            )
+            str(getattr(cp, "counterparty_id", "")): getattr(cp, "legal_name", str(getattr(cp, "counterparty_id", "")))
             for cp in counterparties
         }
         top_client_id = sorted_clients[0][0] if sorted_clients else "N/A"

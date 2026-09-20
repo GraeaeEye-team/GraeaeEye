@@ -58,6 +58,7 @@ async def create_test_auth_cookie(
 # IN-PROCESS ASGI TEST HARNESS (Zero External HTTP Dependencies)
 # =====================================================================
 
+
 async def asgi_call(
     method: str,
     path: str,
@@ -66,9 +67,7 @@ async def asgi_call(
 ) -> Tuple[int, List[Tuple[str, str]], bytes]:
     """Pure in-process ASGI call invoking FastAPI app directly."""
     headers = headers or {}
-    raw_headers = [
-        (k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in headers.items()
-    ]
+    raw_headers = [(k.lower().encode("latin-1"), v.encode("latin-1")) for k, v in headers.items()]
     if body and not any(k.lower() == "content-length" for k in headers):
         raw_headers.append((b"content-length", str(len(body)).encode("latin-1")))
 
@@ -103,9 +102,7 @@ async def asgi_call(
         nonlocal status_code, response_headers, response_body
         if message["type"] == "http.response.start":
             status_code = message["status"]
-            response_headers = [
-                (k.decode("latin-1"), v.decode("latin-1")) for k, v in message["headers"]
-            ]
+            response_headers = [(k.decode("latin-1"), v.decode("latin-1")) for k, v in message["headers"]]
         elif message["type"] == "http.response.body":
             response_body.append(message.get("body", b""))
 
@@ -123,9 +120,7 @@ def build_multipart(fields: Dict[str, str], files_list: List[Tuple[str, str | by
         buf.write(f"{value}\r\n".encode("utf-8"))
     for filename, content in files_list:
         buf.write(f"--{boundary}\r\n".encode("utf-8"))
-        buf.write(
-            f'Content-Disposition: form-data; name="files"; filename="{filename}"\r\n'.encode("utf-8")
-        )
+        buf.write(f'Content-Disposition: form-data; name="files"; filename="{filename}"\r\n'.encode("utf-8"))
         buf.write(b"Content-Type: application/octet-stream\r\n\r\n")
         buf.write(content.encode("utf-8") if isinstance(content, str) else content)
         buf.write(b"\r\n")
@@ -136,6 +131,7 @@ def build_multipart(fields: Dict[str, str], files_list: List[Tuple[str, str | by
 # =====================================================================
 # TEST A: FULL HAPPY PATH WITH TRANSACTIONS.CSV (REAL PATH IN-PROCESS)
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_gate3_happy_path_with_mock_database():
@@ -263,6 +259,7 @@ async def test_gate3_happy_path_with_mock_database():
 # TEST B: MOCK MODE REGRESSION TEST (USE_MOCK_ENGINE=true)
 # =====================================================================
 
+
 @pytest.mark.asyncio
 async def test_gate3_mock_mode_regression():
     """
@@ -292,10 +289,7 @@ async def test_gate3_mock_mode_regression():
     assert "run_id" in resp
 
     # 2. Upload >5 files -> 422 TOO_MANY_FILES
-    six_files = [
-        ("files", (f"f_{i}.csv", b"data\n1\n", "text/csv"))
-        for i in range(6)
-    ]
+    six_files = [("files", (f"f_{i}.csv", b"data\n1\n", "text/csv")) for i in range(6)]
     response6 = client.post(
         "/api/v1/analysis/start",
         data={
@@ -323,6 +317,7 @@ async def test_gate3_mock_mode_regression():
 # =====================================================================
 # TEST C: DB UNAVAILABLE 503 ERROR
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_gate3_db_unavailable_503():
@@ -363,6 +358,7 @@ async def test_gate3_db_unavailable_503():
 # =====================================================================
 # TEST D: AUTH HARDENING (401 UNAUTHORIZED)
 # =====================================================================
+
 
 @pytest.mark.asyncio
 async def test_gate3_auth_hardening():
