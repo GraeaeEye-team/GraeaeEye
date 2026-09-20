@@ -13,7 +13,7 @@ import logging
 from typing import Any, Dict, List, Optional
 from uuid import UUID, uuid4
 
-.models import DatabaseReport
+from .models import DatabaseReport
 
 logger = logging.getLogger("smart_credit.db.mock_connection")
 

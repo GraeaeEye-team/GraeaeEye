@@ -19,7 +19,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import AsyncConnectionPool
 
-.models import DatabaseReport
+from .models import DatabaseReport
 
 logger = logging.getLogger("smart_credit.db.connection")
 
@@ -1324,4 +1324,4 @@ class Database:
 
 
 # Export MockDatabase convenience alias if needed
-.mock_connection import MockDatabase
+from .mock_connection import MockDatabase
