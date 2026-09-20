@@ -24,12 +24,33 @@ import pytest
 
 sys.path.insert(0, os.path.abspath("src"))
 
+from fintech_app.auth.security import create_session_token, hash_password
 from fintech_app.core.config import settings
 from fintech_app.db.mock_connection import MockDatabase
 from fintech_app.main import app
 from fintech_app.api.schemas import CANONICAL_18D_KEYS
 
-VALID_COOKIE = "session_token=mock-session-token-phase1-secret"
+MOCK_COOKIE = "session_token=mock-session-token-phase1-secret"
+
+
+async def create_test_auth_cookie(
+    db: Any,
+    email: str = "test@graeae.eye",
+    password: str = "test-password-2026",
+    role: str = "ANALYST",
+) -> str:
+    """Seeds a test user into the database and returns a signed session_token cookie string."""
+    user_id = uuid4()
+    await db.add_record_to_users(
+        user_id=user_id,
+        email=email,
+        password_hash=hash_password(password),
+        full_name="Gate 3 Test Analyst",
+        role=role,
+        is_active=True,
+    )
+    token = create_session_token({"sub": str(user_id), "email": email, "role": role})
+    return f"session_token={token}"
 
 
 # =====================================================================
@@ -130,6 +151,9 @@ async def test_gate3_happy_path_with_mock_database():
     app.state.db = mock_db
     settings.use_mock_engine = False
 
+    # Issue valid signed JWT auth cookie for real mode
+    auth_cookie = await create_test_auth_cookie(mock_db)
+
     csv_content = (
         "Data,Suma,Detalii,CUI\n"
         "2025-02-01,15000.00,Incasare vanzari marfa,100100\n"
@@ -150,7 +174,7 @@ async def test_gate3_happy_path_with_mock_database():
     st, hdrs, b = await asgi_call(
         "POST",
         "/api/v1/analysis/start",
-        {"content-type": ct, "cookie": VALID_COOKIE},
+        {"content-type": ct, "cookie": auth_cookie},
         body,
     )
     assert st == 202, f"Expected 202 Accepted, got {st}: {b.decode('utf-8')}"
@@ -190,7 +214,7 @@ async def test_gate3_happy_path_with_mock_database():
     st_stream, hdrs_stream, b_stream = await asgi_call(
         "GET",
         f"/api/v1/analysis/stream/{run_id}",
-        {"cookie": VALID_COOKIE},
+        {"cookie": auth_cookie},
     )
     assert st_stream == 200
     stream_text = b_stream.decode("utf-8")
@@ -208,7 +232,7 @@ async def test_gate3_happy_path_with_mock_database():
     st_rep, hdrs_rep, b_rep = await asgi_call(
         "GET",
         f"/api/v1/analysis/report/{run_id}",
-        {"cookie": VALID_COOKIE},
+        {"cookie": auth_cookie},
     )
     assert st_rep == 200, f"Expected 200, got {st_rep}: {b_rep.decode('utf-8')}"
     rep = json.loads(b_rep.decode("utf-8"))
@@ -256,7 +280,7 @@ async def test_gate3_mock_mode_regression():
     body, ct = build_multipart(fields, files)
 
     # 1. POST /start returns 202
-    st, _, b = await asgi_call("POST", "/api/v1/analysis/start", {"content-type": ct, "cookie": VALID_COOKIE}, body)
+    st, _, b = await asgi_call("POST", "/api/v1/analysis/start", {"content-type": ct, "cookie": MOCK_COOKIE}, body)
     assert st == 202
     resp = json.loads(b.decode("utf-8"))
     assert "run_id" in resp
@@ -265,17 +289,17 @@ async def test_gate3_mock_mode_regression():
     # 2. Upload >5 files -> 422 TOO_MANY_FILES
     six_files = [(f"f_{i}.csv", "data\n1\n") for i in range(6)]
     b6, ct6 = build_multipart(fields, six_files)
-    st6, _, b6_resp = await asgi_call("POST", "/api/v1/analysis/start", {"content-type": ct6, "cookie": VALID_COOKIE}, b6)
+    st6, _, b6_resp = await asgi_call("POST", "/api/v1/analysis/start", {"content-type": ct6, "cookie": MOCK_COOKIE}, b6)
     assert st6 == 422
     assert "TOO_MANY_FILES" in b6_resp.decode("utf-8")
 
     # 3. Unknown UUID stream -> 404 RUN_NOT_FOUND
-    st_unk, _, b_unk = await asgi_call("GET", f"/api/v1/analysis/stream/{uuid4()}", {"cookie": VALID_COOKIE})
+    st_unk, _, b_unk = await asgi_call("GET", f"/api/v1/analysis/stream/{uuid4()}", {"cookie": MOCK_COOKIE})
     assert st_unk == 404
     assert "RUN_NOT_FOUND" in b_unk.decode("utf-8")
 
     # 4. Unknown UUID report -> 404 RUN_NOT_FOUND
-    st_unk_rep, _, b_unk_rep = await asgi_call("GET", f"/api/v1/analysis/report/{uuid4()}", {"cookie": VALID_COOKIE})
+    st_unk_rep, _, b_unk_rep = await asgi_call("GET", f"/api/v1/analysis/report/{uuid4()}", {"cookie": MOCK_COOKIE})
     assert st_unk_rep == 404
     assert "RUN_NOT_FOUND" in b_unk_rep.decode("utf-8")
 
@@ -301,19 +325,19 @@ async def test_gate3_db_unavailable_503():
     body, ct = build_multipart(fields, [])
 
     # POST /start -> 503
-    st, _, b = await asgi_call("POST", "/api/v1/analysis/start", {"content-type": ct, "cookie": VALID_COOKIE}, body)
+    st, _, b = await asgi_call("POST", "/api/v1/analysis/start", {"content-type": ct, "cookie": MOCK_COOKIE}, body)
     assert st == 503
     resp = json.loads(b.decode("utf-8"))
     assert resp.get("code") == "DB_UNAVAILABLE"
 
     # GET /stream/{run_id} -> 503
-    st_s, _, b_s = await asgi_call("GET", f"/api/v1/analysis/stream/{uuid4()}", {"cookie": VALID_COOKIE})
+    st_s, _, b_s = await asgi_call("GET", f"/api/v1/analysis/stream/{uuid4()}", {"cookie": MOCK_COOKIE})
     assert st_s == 503
     resp_s = json.loads(b_s.decode("utf-8"))
     assert resp_s.get("code") == "DB_UNAVAILABLE"
 
     # GET /report/{run_id} -> 503
-    st_r, _, b_r = await asgi_call("GET", f"/api/v1/analysis/report/{uuid4()}", {"cookie": VALID_COOKIE})
+    st_r, _, b_r = await asgi_call("GET", f"/api/v1/analysis/report/{uuid4()}", {"cookie": MOCK_COOKIE})
     assert st_r == 503
     resp_r = json.loads(b_r.decode("utf-8"))
     assert resp_r.get("code") == "DB_UNAVAILABLE"
