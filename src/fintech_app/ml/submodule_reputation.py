@@ -6,22 +6,13 @@ and news sentiment to detect reputational and legal risks.
 
 from typing import Any
 
-try:
-    from src.fintech_app.ml.base import (
-        BaseSubmoduleEvaluator,
-        SubmoduleResult,
-        clamp,
-        safe_div,
-    )
-    from src.fintech_app.shared.schemas.user_types import EvaluationStatus
-except ModuleNotFoundError:
-    from fintech_app.ml.base import (
-        BaseSubmoduleEvaluator,
-        SubmoduleResult,
-        clamp,
-        safe_div,
-    )
-    from fintech_app.shared.schemas.user_types import EvaluationStatus
+from .base import (
+    BaseSubmoduleEvaluator,
+    SubmoduleResult,
+    clamp,
+    safe_div,
+)
+from ..shared.schemas.user_types import EvaluationStatus
 
 
 class WebReputationEvaluator(BaseSubmoduleEvaluator):

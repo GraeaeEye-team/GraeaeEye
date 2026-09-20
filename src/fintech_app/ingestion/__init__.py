@@ -4,15 +4,15 @@
 собирает открытые внешние реестры и сохраняет нормализованные данные через DAL в PostgreSQL.
 """
 
-from fintech_app.ingestion.ai_mapper import (
+from .ai_mapper import (
     TransactionCategorizationMapper,
     categorize_transaction,
     fuzzy_map_headers,
     map_columns_with_ai,
     validate_mapping,
 )
-from fintech_app.ingestion.external_intel import ExternalIntelligenceCollector
-from fintech_app.ingestion.parser import (
+from .external_intel import ExternalIntelligenceCollector
+from .parser import (
     BankStatementParser,
     CreditObligationParser,
     InvoiceParser,
@@ -21,8 +21,8 @@ from fintech_app.ingestion.parser import (
     load_file_to_dataframe,
     parse_date_flexible,
 )
-from fintech_app.ingestion.pipeline import IngestionPipeline
-from fintech_app.ingestion.schemas import (
+from .pipeline import IngestionPipeline
+from .schemas import (
     IngestionResult,
     NormalizedTransactionRecord,
     NormalizedTransactionSchema,

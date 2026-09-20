@@ -17,7 +17,8 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from fintech_app.core.config import settings
+
+from .core.config import settings
 import inspect
 from .api.router import api_router
 
@@ -38,6 +39,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Initializing GraeaeEye API startup lifecycle...")
 
     if not settings.use_mock_engine:
+
         if hasattr(app.state, "db") and app.state.db is not None:
             db_inst = app.state.db
             if hasattr(db_inst, "open") and not getattr(db_inst, "is_open", False):
@@ -125,12 +127,6 @@ app.add_middleware(
 
 # Register API Router
 app.include_router(api_router)
-
-
-@app.get("/health", tags=["Health Check"])
-async def health_check():
-    """Root health check probe matching upstream."""
-    return {"status": "ok", "service": "GraeaeEye API"}
 
 
 # =====================================================================

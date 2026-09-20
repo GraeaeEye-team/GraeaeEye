@@ -23,7 +23,7 @@ import random
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
-from fintech_app.api.schemas import (
+from .schemas import (
     CANONICAL_18D_KEYS,
     AnalysisReportResponse,
     FeatureVector,
@@ -34,7 +34,7 @@ from fintech_app.api.schemas import (
     SubmoduleReportCard,
     VerdictCategory,
 )
-from fintech_app.shared.schemas.user_types import AnalysisStatus
+from ..shared.schemas.user_types import AnalysisStatus
 
 logger = logging.getLogger(__name__)
 

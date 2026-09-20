@@ -25,13 +25,13 @@ try:
 except ImportError:
     pd = None  # type: ignore
 
-from fintech_app.core.exceptions import ParsingError
-from fintech_app.ingestion.ai_mapper import (
+from ..core.exceptions import ParsingError
+from .ai_mapper import (
     TransactionCategorizationMapper,
     fuzzy_map_headers,
     validate_mapping,
 )
-from fintech_app.ingestion.schemas import (
+from .schemas import (
     NormalizedTransactionRecord,
     ParsedBankStatementPayload,
     ParsedCreditObligationRecord,
@@ -40,7 +40,7 @@ from fintech_app.ingestion.schemas import (
     RawBankStatementLine,
     StandardizedTransactionBatch,
 )
-from fintech_app.shared.schemas.user_types import (
+from ..shared.schemas.user_types import (
     LiquidityClass,
     TransactionCategory,
     TransactionDirection,

@@ -31,23 +31,25 @@ from fastapi import (
 )
 from fastapi.responses import StreamingResponse
 
-from fintech_app.api.contract_mapping import map_ml_result_to_analysis_report
-from fintech_app.api.dependencies import get_current_user, get_db
-from fintech_app.api.mock_provider import mock_analysis_provider
-from fintech_app.api.orchestration import execute_orchestration_worker
-from fintech_app.api.schemas import (
+
+from ..contract_mapping import map_ml_result_to_analysis_report
+from ..dependencies import get_current_user, get_db
+from ..mock_provider import mock_analysis_provider
+from ..orchestration import execute_orchestration_worker
+from ..schemas import (
     AnalysisReportResponse,
     AnalysisStartResponse,
     CurrentUser,
     ErrorResponse,
     HealthResponse,
 )
-from fintech_app.api.stream_provider import stream_telemetry_from_db
-from fintech_app.core.config import settings
-from fintech_app.ml.base import EvaluationStatus, SubmoduleResult, clamp
-from fintech_app.ml.pipeline import UnderwritingPipelineResult
-from fintech_app.ml.scoring import CreditScoringEngine, CreditScoringResult
-from fintech_app.shared.schemas.user_types import AnalysisStatus
+
+from ..stream_provider import stream_telemetry_from_db
+from ...core.config import settings
+from ...ml.base import EvaluationStatus, SubmoduleResult, clamp
+from ...ml.pipeline import UnderwritingPipelineResult
+from ...ml.scoring import CreditScoringEngine, CreditScoringResult
+from ...shared.schemas.user_types import AnalysisStatus
 
 logger = logging.getLogger(__name__)
 

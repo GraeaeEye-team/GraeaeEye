@@ -10,10 +10,7 @@ and generates structured synthesis prompts for LLM underwriting memoranda.
 from dataclasses import dataclass, field
 import math
 
-try:
-    from src.fintech_app.ml.base import clamp
-except ModuleNotFoundError:
-    from fintech_app.ml.base import clamp
+from .base import clamp
 
 
 @dataclass

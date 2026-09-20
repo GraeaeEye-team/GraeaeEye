@@ -6,22 +6,13 @@ governance independence (GIR), and evaluates capital stability and key-person ri
 
 from typing import Any
 
-try:
-    from src.fintech_app.ml.base import (
-        BaseSubmoduleEvaluator,
-        SubmoduleResult,
-        clamp,
-        safe_div,
-    )
-    from src.fintech_app.shared.schemas.user_types import EvaluationStatus
-except ModuleNotFoundError:
-    from fintech_app.ml.base import (
-        BaseSubmoduleEvaluator,
-        SubmoduleResult,
-        clamp,
-        safe_div,
-    )
-    from fintech_app.shared.schemas.user_types import EvaluationStatus
+from .base import (
+    BaseSubmoduleEvaluator,
+    SubmoduleResult,
+    clamp,
+    safe_div,
+)
+from ..shared.schemas.user_types import EvaluationStatus
 
 
 class OwnershipStructureEvaluator(BaseSubmoduleEvaluator):

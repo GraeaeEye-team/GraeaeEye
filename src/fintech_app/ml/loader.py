@@ -12,48 +12,26 @@ import logging
 from typing import Any, List, Optional
 from uuid import UUID, uuid4
 
-try:
-    from src.fintech_app.db.connection import Database
-    from src.fintech_app.db.models import (
-        BankAccountRecord,
-        BusinessRecord,
-        CompanyDataSnapshot,
-        CounterpartyRecord,
-        CounterpartyRole,
-        CreditObligationRecord,
-        FacilityType,
-        InvoiceRecord,
-        InvoiceStatus,
-        InvoiceType,
-        LiquidityClass,
-        MacroSectorMetricRecord,
-        ShareholderRecord,
-        TransactionCategory,
-        TransactionDirection,
-        TransactionRecord,
-        WebReputationRecord,
-    )
-except ModuleNotFoundError:
-    from fintech_app.db.connection import Database
-    from fintech_app.db.models import (
-        BankAccountRecord,
-        BusinessRecord,
-        CompanyDataSnapshot,
-        CounterpartyRecord,
-        CounterpartyRole,
-        CreditObligationRecord,
-        FacilityType,
-        InvoiceRecord,
-        InvoiceStatus,
-        InvoiceType,
-        LiquidityClass,
-        MacroSectorMetricRecord,
-        ShareholderRecord,
-        TransactionCategory,
-        TransactionDirection,
-        TransactionRecord,
-        WebReputationRecord,
-    )
+from ..db.connection import Database
+from ..db.models import (
+    BankAccountRecord,
+    BusinessRecord,
+    CompanyDataSnapshot,
+    CounterpartyRecord,
+    CounterpartyRole,
+    CreditObligationRecord,
+    FacilityType,
+    InvoiceRecord,
+    InvoiceStatus,
+    InvoiceType,
+    LiquidityClass,
+    MacroSectorMetricRecord,
+    ShareholderRecord,
+    TransactionCategory,
+    TransactionDirection,
+    TransactionRecord,
+    WebReputationRecord,
+)
 
 logger: logging.Logger = logging.getLogger("smart_credit.ml")
 

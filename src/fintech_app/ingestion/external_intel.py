@@ -14,9 +14,9 @@ import logging
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
-from fintech_app.core.config import settings
-from fintech_app.ingestion.parser import JudicialRegistryParser
-from fintech_app.ingestion.schemas import ParsedJudicialRecord
+from ..core.config import settings
+from .parser import JudicialRegistryParser
+from .schemas import ParsedJudicialRecord
 
 logger = logging.getLogger(__name__)
 
