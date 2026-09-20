@@ -1,0 +1,4 @@
+lender_name,facility_type,principal_amount,outstanding_balance,monthly_payment,past_due_30d_count,past_due_90d_count,historical_defaults_count
+Moldova Agroindbank,TERM_LOAN,400000.00,150000.00,12000.00,0,0,0
+Victoriabank,CREDIT_LINE,300000.00,100000.00,10000.00,0,0,0
+Mobiasbanca,LEASING,200000.00,50000.00,8000.00,0,0,0
