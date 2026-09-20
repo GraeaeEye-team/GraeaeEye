@@ -1,90 +1,195 @@
-## Дебаг
+# GraeaeEye: Explainable SME Underwriting Engine
 
-* Docker:
+## What It Is
+GraeaeEye is a rule-based underwriting scorecard that evaluates SME financing readiness through modular financial analysis. It identifies liquidity, debt, receivables, and concentration risks, explains contributing factors, and flags incomplete cases for human review.
+
+**Current implementation:** deterministic rule-based scoring (not ML/AI). Weights and thresholds are expert-defined. No trained models, no ground truth validation yet.
+
+---
+
+## Architecture (Phase 1-2 Complete)
+
+### Core Components (DONE)
+- **9 Financial Submodules** (OS, WPR, MSR, CD, SD, ICR, CFS, RQ, ICDL): evaluate ownership structure, web reputation, macro risk, client/supplier dependency, cash readiness/stability, receivables quality, credit discipline
+- **18D Feature Vector**: canonical financial indices (liquidity, leverage, concentration, coverage, and stability metrics)
+- **Scoring Engine**: weighted average with dynamic renormalization for missing data
+- **PostgreSQL DAL**: 57-method async interface with parameterized queries and in-memory mock fallback
+- **Real Auth**: Argon2id password hashing, JWT session tokens, secure HttpOnly cookies, and seed dev user
+- **Real Orchestration**: CSV ingestion → DB → ML analytical pipeline → SSE telemetry → persisted report
+- **Regression Shield**: 57 automated tests (contract, integration, fixtures) + GitHub Actions CI
+
+### Two Modes
+- `USE_MOCK_ENGINE=true` (dev/demo): synthetic data, fast iteration, in-memory fixtures
+- `USE_MOCK_ENGINE=false` (production): real PostgreSQL + analytical pipeline execution
+
+---
+
+## Quick Start
+
+### Option 1: Local Development (Recommended)
+
+```bash
+# Clone
+git clone https://github.com/GraeaeEye-team/GraeaeEye.git
+cd GraeaeEye
+
+# Install dependencies
+python -m venv venv
+source venv/bin/activate  # Windows: .\venv\Scripts\activate
+pip install -r requirements.txt
+
+# Set environment
+export PYTHONPATH=src
+export USE_MOCK_ENGINE=true
+export SECRET_KEY=dev-secret-change-in-production
+
+# Seed dev user
+python -m scripts.seed_dev_user
+
+# Run server
+uvicorn fintech_app.main:app --reload --port 8000
+
+# Open Swagger UI
+open http://localhost:8000/docs
 ```
-$ #См. https://docs.docker.com/get-started/get-docker/ для установки docker-а  
-$ git clone https://github.com/GraeaeEye-team/GraeaeEye.git
-$ cd GraeaeEye
-$ docker compose up --build
+
+### Option 2: Docker Compose
+
+```bash
+# Build and start services (PostgreSQL + Backend + Backup Daemon)
+docker compose up -d --build
+
+# Health check
+curl -f http://localhost:8000/health
+
+# View live logs
+docker compose logs -f backend
+
+# Stop services
+docker compose down
 ```
 
+---
 
-* Локально:
+## API Endpoints
+
+All primary application routes are versioned under `/api/v1`:
+
+### Authentication (`/api/v1/auth`)
+- `POST /api/v1/auth/register` — Register a new analyst account (Argon2id password hashing, email validation).
+- `POST /api/v1/auth/token` — Authenticate analyst credentials, set `session_token` HttpOnly cookie.
+
+### Analysis (`/api/v1/analysis`)
+- `POST /api/v1/analysis/start` — Initiate underwriting run with up to 5 financial CSV files (multipart form upload).
+- `GET /api/v1/analysis/stream/{run_id}` — Real-time Server-Sent Events (SSE) progress telemetry.
+- `GET /api/v1/analysis/report/{run_id}` — Full structured underwriting report with 18D canonical feature vector and subscores.
+
+### Health
+- `GET /health` — Service health check endpoint.
+
+---
+
+## Fixture Data
+
+The repository includes contrasting financial profiles under `data/fixtures/` designed to validate the scoring engine across distinct risk tiers:
+
+- **`GOOD_SME`** (`data/fixtures/good_sme/`):
+  - Strong liquidity (Cash Ratio ≈ 5.0, Current Assets: 1.5M, Current Liabilities: 300k).
+  - Clean receivables, negligible aging/overdue accounts.
+  - Flawless credit discipline (0 past-due counts, 0 historical defaults).
+  - Target Score: `universal_score >= 75` (`PRIME_LOW_RISK`, `APPROVED`).
+- **`RISKY_SME`** (`data/fixtures/risky_sme/`):
+  - Severe liquidity strain (Cash Ratio ≈ 0.25, Current Assets: 200k, Current Liabilities: 800k).
+  - High client concentration (>70%), frequent negative bank balances.
+  - Chronic past-due receivables, historical defaults, high debt service load.
+  - Target Score: `universal_score <= 55` (`HIGH_RISK_REJECT`, `REJECTED`).
+
+### Seeding Fixtures
+To populate the database with these profiles idempotently:
+```bash
+python -m scripts.seed_fixtures
 ```
-$ source /path/to/venv    
-$ pip install git+https://github.com/GraeaeEye-team/GraeaeEye.git
-$ python3 -m fintech_app
+
+---
+
+## Testing
+
+GraeaeEye features a 57-test regression shield validating contracts, business logic, and in-process orchestration:
+
+```bash
+# Run the complete test suite
+pytest -q
+
+# Contract tests (18D feature vector order, P10 error envelope, status codes)
+pytest tests/test_contracts.py -v
+
+# Integration tests (GOOD_SME vs RISKY_SME contrast, degraded mode, idempotent seeding)
+pytest tests/test_integration.py -v
+
+# Authentication and security tests
+pytest tests/test_gate4_auth.py -v
+
+# Orchestration and SSE pipeline tests
+pytest tests/test_gate3_orchestration.py -v
+
+# Static analysis
+ruff check src/ tests/
 ```
 
-После запуска смотрите доки [тут]("http://localhost:8000/docs" )
+### Continuous Integration (CI)
+GitHub Actions workflow in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) validates every pull request:
+1. **`test` Job**: Runs Ruff linting and the complete Pytest suite with zero warnings allowed.
+2. **`docker-smoke` Job**: Builds the docker container stack and verifies container health.
 
-# Часть 1
+---
 
-> Главная боль МСП: Прибыль ≠ Деньги.  
->
-> Компания может быть супер-прибыльной на бумаге, но обанкротиться, потому что у нее просто нет кэша, чтобы заплатить зарплату завтра. Банки дают выписки, но они смотрят в зеркало заднего вида. Наша задача — сделать навигатор, который смотрит вперед.
+## Roadmap
 
-🔥 **Живой пример 1**: «Успешная» компания на грани смерти Представь IT-агентство. Они выиграли тендер на 10 млн руб. Бухгалтерия радуется, директор пьет шампанское. Но по контракту оплата — 60 дней постоплатой.  При этом у агентства есть обязательства:
-Через 5 дней платить зарплату (1.5 млн).
-Через 10 дней платить за аренду и сервера (300 тыс).
-На счету сейчас всего 1 млн. Итог: Кассовый разрыв. Компания не может заплатить зарплату, сотрудники уходят, тендер срывается. Если бы у них был наш инструмент, он бы еще месяц назад подсветил красным: «Внимание! Через 5 дней кассовый разрыв. Срочно возьмите овердрафт или попросите клиента о предоплате».
+- [x] **Phase 1: Architecture & Mock Engine (DONE)**:
+  - Canonical 18D financial feature vector definition.
+  - Strict P10 error envelopes (`{"detail": str, "code": str}`).
+  - 9 rule-based financial analysis submodules with dynamic renormalization.
+  - In-memory mock provider with synthetic telemetry and reports.
+- [x] **Phase 2: Real In-Process Integration (DONE)**:
+  - 57-method PostgreSQL Data Access Layer (DAL) with parameterized queries.
+  - Real Argon2id authentication and signed HS256 JWT session management.
+  - Multipart CSV ingestion pipeline (accounts, transactions, invoices, credit obligations, shareholders).
+  - Real orchestration wiring: Ingestion → DAL → Scoring Engine → SSE Telemetry → Report.
+  - `GOOD_SME` / `RISKY_SME` contrasting benchmark fixtures with automated seed script.
+  - 57-test regression shield + GitHub Actions CI workflow.
+- [ ] **Phase 3: Advanced Capabilities & Machine Learning (FUTURE)**:
+  - **Empirical ML Training**: Transition from expert-defined rules to supervised ML models (e.g. LightGBM, CatBoost) trained on empirical default outcomes.
+  - **Advanced Explainability**: Calibrated SHAP / Integrated Gradients on trained models.
+  - **Cash Flow Forecasting**: Time-series predictive models with confidence intervals on 30/60/90-day horizons.
+  - **Interactive Scenario Engine**: What-If stress simulations for payment delays and macroeconomic shocks.
+  - **Security & Multi-Tenancy**: CSRF protection, rate limiting, and tenant-isolated database schemas.
+  - **Frontend Interface**: Dedicated web UI with real-time SSE chart rendering.
 
-🔥 **Живой пример 2**: Иллюзия «надежного» клиента Клиент «ООО Ромашка» по договору должен платить 15-го числа каждого месяца. Компания планирует свой бюджет, исходя из этого. Но по факту «Ромашка» всегда задерживает оплату на 10-14 дней, потому что у них внутри долгий процесс согласования.  Наша система не верит бумажкам. Она смотрит в историю и говорит: «Ромашка» фактически платит 25-го числа. Планируй деньги от них только к концу месяца, иначе снова попадешь на кассовый разрыв.
-Наш продукт — это не просто «красивые графики». Это система раннего предупреждения и принятия решений.
+---
 
+## Limitations (Honest Disclosure)
 
+In alignment with engineering integrity and transparent system positioning, the current limitations of the system are explicitly acknowledged:
 
-# ЧАСТЬ 2. МОДУЛИ 1 И 2: ДАННЫЕ И ХРАНИЛИЩЕ (КОНЦЕПЦИЯ)
+1. **No Trained ML Model Yet**: The current analytical pipeline uses deterministic, expert-crafted arithmetic rules. There are no weights learned from empirical training data.
+2. **No Ground-Truth Validation**: Risk score bands (`PRIME_LOW_RISK`, `MODERATE_RISK_REVIEW`, `HIGH_RISK_REJECT`) and threshold cutoffs have not yet been calibrated against historical SME default datasets or verified by external rating agencies.
+3. **Pseudo-SHAP (Not Real SHAP)**: Feature importance values and directional impacts are currently calculated using normalized heuristic distance-from-median metrics rather than true Shapley values computed over game-theoretic model predictions.
+4. **Limited Production Ingestion**: Ingestion currently handles structured CSV tables. OCR for scanned PDF bank statements, semi-structured Excel spreadsheets, and direct banking API integrations are not yet implemented.
+5. **No Frontend**: The platform currently operates strictly as a backend service accessible via REST API and Swagger UI.
+6. **Mock Mode Default**: `USE_MOCK_ENGINE` defaults to `true` in local development configurations to allow instant demonstration without an active PostgreSQL instance.
 
-Чтобы предсказывать будущее, нам нужны качественные данные. Но в реальности данные от МСП — это боль.  
+---
 
-🧠 **Модуль 1**: Интеллектуальный парсер (Data Ingestion) Мы не пишем жесткие парсеры под каждую выписку, потому что их сотни.  Суть: Мы делаем AI-слой, который понимает смысл данных, а не просто читает ячейки.  Пример: Клиент загружает Excel. В одном банке колонка называется «Сумма платежа», в другом «Amount», в третьем это просто цифры в колонке «Колонка 4», а в четвертом сумма и валюта слеплены в одну ячейку («150 000 RUB»).  Наш модуль на основе эмбеддингов и LLM смотрит на контекст (заголовки, первые строки, форматы чисел) и автоматически маппит это в нашу единую внутреннюю структуру. Если формат совсем дикий — мы просим пользователя через простой интерфейс подтвердить: «Мы поняли, что вот этот столбец — это дата, верно?».
+## Team
 
-🗄 **Модуль 2**: Хранилище и Граф связей (Data Storage) Мы не храним просто «табличку с транзакциями». Транзакция сама по себе бесполезна. Нам нужен контекст. Суть: Мы строим реляционный граф сущностей.  Пример: Приходит транзакция «+50 000 от ООО Ромашка». Наш модуль не просто пишет +50000. Он связывает эту транзакцию с:
-Счетом-фактурой (Invoice), который мы ранее выставили.
-Контрактом, по которому она прошла.
-Карточкой контрагента (Client). Зачем это нужно? Потому что ML-алгоритму (Модулю 3) нужно знать не просто «пришло 50к», а «пришла оплата ЗА ЧТО, ОТ КОГО и ПО КАКИМ УСЛОВИЯМ». Только так мы сможем найти паттерны (например, что по контрактам типа "Х" клиенты всегда задерживают оплату).
+- **Team Lead & DevOps**: CI/CD pipelines, Docker infrastructure, architecture alignment, code review.
+- **Backend Developer**: FastAPI application, DAL implementation, PostgreSQL schema, authentication & session management.
+- **Data Engineer**: Data ingestion pipeline, file format parsing, data normalization, database fixtures.
+- **ML / Quant Engineer**: Financial submodule metrics, 18D feature vector design, rule-based scorecard algorithms, explanation heuristics.
+- **Frontend / Integration Engineer**: Contract mapping, API client integration, UI mockups, and reporting specifications.
 
+---
 
+## License
 
-# ЧАСТЬ 3. МОДУЛЬ 3: ПРЕДИКТИВНОЕ ЯДРО (САМОЕ ВАЖНОЕ)
-
-Это сердце нашего продукта. Здесь мы превращаем данные в инсайты. Модуль состоит из трех под-систем:  
-
-⚙️ 3.1. **Прогноз Cash Flow (Денежного потока)**    
-Мы не используем простое скользящее среднее. Мы используем модели временных рядов (например, Prophet или градиентный бустинг XGBoost/LightGBM).  
-
-Фишка: Мы подаем на вход не только историю, но и экзогенные переменные (известное будущее). Если в системе уже есть выставленные, но неоплаченные счета (дебиторка) или подписанные контракты с известными датами оплат, модель жестко учитывает их как факты, а не как вероятности. Модель строит базовый прогноз притоков и оттоков на 30/60/90 дней с доверительными интервалами.
-
-⚙️ 3.2. **Поведенческий скоринг контрагентов (Behavioral Scoring)**  
-Это наш киллер-фича. Мы прогнозируем реальные даты оплат, а не договорные. Как это работает: Для каждого контрагента мы собираем факты: «Когда должен был по договору» vs «Когда фактически пришли деньги».  Мы можем использовать модели анализа выживаемости (Survival Analysis) или классификацию, чтобы ответить на вопрос: «Какова вероятность, что Клиент Х оплатит счет в ближайшие 7 дней?». Если модель видит, что клиент систематически сдвигает оплаты, она автоматически сдвигает и наш прогноз притока денег, спасая бизнес от иллюзий.
-
-⚙️ 3.3. **Движок сценариев и рисков (What-If & Explainability)**  
-Бизнесу нужно не только предсказание, но и ответы на вопросы «А что если?». Сценарии: Владелец бизнеса может подвигать ползунки: «Что если мой топ-3 клиента задержат оплату на 20 дней?», «Что если поставщик поднимет цены на 10%?». Система пересчитывает Cash Flow и показывает, в какой день баланс уйдет в минус. Объяснимость (XAI): Если система кричит «Будет кассовый разрыв 15-го числа», она обязана объяснить почему. Мы используем SHAP-значения, чтобы показать вклад факторов: «Разрыв произойдет на 80% из-за того, что Клиент А с вероятностью 90% задержит оплату, и на 20% из-за сезонного падения выручки».
-
-
-
-# ЧАСТЬ 4. ОРГАНИЗАЦИЯ РАБОТЫ КОМАНДЫ (5 ЧЕЛОВЕК)
-
-Хакатон/стартап — это не место для «надзирателей», которые только смотрят. Пятый человек должен быть Тимлидом / Архитектором / DevOps, который тоже пишет код, но его главная задача — «смазка» и интеграция.  
-
-👥 Распределение ролей:
-
-* Data Engineer (Парсинг и данные): Отвечает за Модуль 1. Пайплайны загрузки, очистка, работа с API банков, AI-маппинг колонок.
-* Backend / DB Developer (База и API): Отвечает за Модуль 2 и бэкенд. Проектирует схему PostgreSQL, пишет API на FastAPI, связывает базу с ML-моделями и фронтом.
-* ML Engineer (Мозги): Отвечает за Модуль 3. Прогноз временных рядов, скоринг контрагентов, расчет SHAP. Упаковывает модели в Docker-контейнеры или pickle.
-* Frontend / Integration (Лицо): Дашборд, графики, UI/UX. Подключается к API бэкенда, рисует те самые «красные зоны» и ползунки сценариев.
-* Team Lead / Integrator (Клей): Следит за архитектурой, настраивает CI/CD (GitHub Actions), пишет Docker-compose, чтобы все это собиралось воедино одной командой. Проводит код-ревью, помогает тем, кто застрял, и следит за таймингом.
-
-🛠 Принципы работы в GitHub:
-
-* API-First: Прежде чем писать код, Бэкенд и Фронтенд (и ML) должны согласовать контракты (например, в Swagger/OpenAPI). Чтобы Фронт не ждал, пока Бэк напишет эндпоинт, они могут сразу моковать данные.
-* Ветвление (GitFlow или упрощенный Trunk-based):
-  - main — только стабильный код.
-  - dev — общая ветка для интеграции.
-  - feature/parser, feature/ml-forecast, feature/dashboard — личные ветки.
-* Pull Requests (PR) обязательны: Никаких пушей напрямую в dev. Сделал фичу -> открыл PR -> Тимлид или смежник посмотрел -> Мержим.
-* Docker с первого дня: У каждого модуля свой Dockerfile.
-* Тимлид пишет docker-compose.yml, чтобы запустить БД, Бэк, Фронт и ML-сервис одной командой docker-compose up.
-* Это спасет вас от ада «а у меня на компе работает».
-* Ежедневные синки (15 минут): Что сделал вчера, что делаю сегодня, какие есть блокеры. Тимлид устраняет блокеры.
+MIT License
