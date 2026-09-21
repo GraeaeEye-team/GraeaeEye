@@ -163,6 +163,7 @@ class MockRunState:
     sector_code: str
     active_submodules: List[str]
     file_names: List[str]
+    user_id: Optional[UUID] = None
     status: AnalysisStatus = AnalysisStatus.QUEUED
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: Optional[datetime] = None
@@ -190,6 +191,7 @@ class MockAnalysisProvider:
         sector_code: str,
         active_submodules: List[str],
         file_names: List[str],
+        user_id: Optional[UUID] = None,
     ) -> UUID:
         """Initializes a new mock analysis run in QUEUED state."""
         run_id = uuid4()
@@ -200,6 +202,7 @@ class MockAnalysisProvider:
             sector_code=sector_code,
             active_submodules=active_submodules,
             file_names=file_names,
+            user_id=user_id,
             status=AnalysisStatus.QUEUED,
         )
         async with self._store_lock:
@@ -211,6 +214,26 @@ class MockAnalysisProvider:
         """Retrieves a mock run state by run_id."""
         async with self._store_lock:
             return self._runs.get(run_id)
+
+    async def get_user_runs(
+        self,
+        user_id: Optional[UUID] = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Tuple[List[MockRunState], int]:
+        """Retrieves runs associated with user_id, or all if user_id is None (admin)."""
+        async with self._store_lock:
+            all_runs = list(self._runs.values())
+
+        if user_id is not None:
+            filtered = [r for r in all_runs if r.user_id == user_id]
+        else:
+            filtered = all_runs
+
+        filtered.sort(key=lambda r: r.created_at, reverse=True)
+        total = len(filtered)
+        paginated = filtered[offset : offset + limit]
+        return paginated, total
 
     async def execute_simulation(self, run_id: UUID) -> None:
         """

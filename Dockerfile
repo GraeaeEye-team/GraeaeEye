@@ -9,7 +9,8 @@ ENV PYTHONUNBUFFERED=1 \
     PYTHONPATH=/app/src
 
 # Установка сборочных утилит и системных библиотек PostgreSQL
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN export DEBIAN_FRONTEND=noninteractive \
+    && apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     postgresql-client \

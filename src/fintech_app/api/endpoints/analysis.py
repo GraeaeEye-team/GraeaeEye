@@ -37,7 +37,9 @@ from ..dependencies import get_current_user, get_db
 from ..mock_provider import mock_analysis_provider
 from ..orchestration import execute_orchestration_worker
 from ..schemas import (
+    AnalysisHistoryResponse,
     AnalysisReportResponse,
+    AnalysisRunSummaryResponse,
     AnalysisStartResponse,
     CurrentUser,
     ErrorResponse,
@@ -236,6 +238,7 @@ async def start_analysis(
             sector_code=resolved_sector_code,
             active_submodules=submodules_list or canonical_submodules,
             file_names=file_names,
+            user_id=current_user.user_id,
         )
         background_tasks.add_task(mock_analysis_provider.execute_simulation, run_id)
         return AnalysisStartResponse(run_id=run_id, status=AnalysisStatus.QUEUED)
@@ -303,12 +306,130 @@ async def start_analysis(
 
 
 @router.get(
+    "/analysis/history",
+    response_model=AnalysisHistoryResponse,
+    status_code=status.HTTP_200_OK,
+    responses={
+        200: {"model": AnalysisHistoryResponse, "description": "List of historical analysis runs."},
+        401: {"model": ErrorResponse, "description": "Unauthorized access."},
+    },
+    summary="List analysis history",
+    description="Returns a paginated ledger of analysis runs for the authenticated user (or all if ADMIN).",
+)
+async def get_analysis_history(
+    limit: int = 50,
+    offset: int = 0,
+    current_user: CurrentUser = Depends(get_current_user),
+    db: Any = Depends(get_db),
+) -> AnalysisHistoryResponse:
+    """Returns historical analysis runs for the active tenant."""
+    limit = max(1, min(limit, 100))
+    offset = max(0, offset)
+
+    if settings.use_mock_engine:
+        filter_user_id = None if current_user.role == "ADMIN" else current_user.user_id
+        runs, total = await mock_analysis_provider.get_user_runs(
+            user_id=filter_user_id,
+            limit=limit,
+            offset=offset,
+        )
+        items = []
+        for r in runs:
+            v_cat = None
+            if r.report and r.report.verdict_category:
+                v_cat = r.report.verdict_category.value if hasattr(r.report.verdict_category, "value") else str(r.report.verdict_category)
+            rec = None
+            if r.report and r.report.recommendation:
+                rec = r.report.recommendation.value if hasattr(r.report.recommendation, "value") else str(r.report.recommendation)
+
+            items.append(
+                AnalysisRunSummaryResponse(
+                    run_id=r.run_id,
+                    company_name=r.company_name,
+                    tax_id=r.tax_id,
+                    sector_code=r.sector_code,
+                    status=r.status,
+                    universal_score=r.report.universal_score if r.report else None,
+                    probability_of_default=r.report.probability_of_default if r.report else None,
+                    verdict_category=v_cat,
+                    recommendation=rec,
+                    created_at=r.created_at,
+                    completed_at=r.completed_at,
+                )
+            )
+        return AnalysisHistoryResponse(items=items, total=total, limit=limit, offset=offset)
+
+    if db is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"detail": "Database service is currently unavailable.", "code": "DB_UNAVAILABLE"},
+        )
+
+    filters: dict[str, Any] = {}
+    if current_user.role != "ADMIN":
+        filters["user_id"] = current_user.user_id
+
+    rep = await db.get_records_from_analysis_runs(
+        find_only_first=False,
+        limit=limit,
+        offset=offset,
+        **filters,
+    )
+    rows = rep.data if (rep.success and rep.data) else []
+    if isinstance(rows, dict):
+        rows = [rows]
+
+    items = []
+    for row in rows:
+        u_score = None
+        if row.get("universal_score") is not None:
+            try:
+                u_score = float(row["universal_score"])
+            except (ValueError, TypeError):
+                pass
+        created = row.get("created_at")
+        if isinstance(created, str):
+            try:
+                created = datetime.fromisoformat(created)
+            except Exception:
+                created = datetime.now(timezone.utc)
+        elif not isinstance(created, datetime):
+            created = datetime.now(timezone.utc)
+
+        completed = row.get("completed_at")
+        if isinstance(completed, str):
+            try:
+                completed = datetime.fromisoformat(completed)
+            except Exception:
+                completed = None
+
+        items.append(
+            AnalysisRunSummaryResponse(
+                run_id=UUID(str(row["run_id"])),
+                company_name=str(row.get("input_company_name") or ""),
+                tax_id=str(row.get("input_tax_id") or ""),
+                sector_code=str(row.get("input_industry_code") or ""),
+                status=AnalysisStatus(row.get("status", "QUEUED")),
+                universal_score=u_score,
+                verdict_category=row.get("verdict_category"),
+                recommendation=row.get("recommendation"),
+                created_at=created,
+                completed_at=completed,
+            )
+        )
+
+    total_count = offset + len(items)
+    return AnalysisHistoryResponse(items=items, total=total_count, limit=limit, offset=offset)
+
+
+@router.get(
     "/analysis/stream/{run_id}",
     response_class=StreamingResponse,
     status_code=status.HTTP_200_OK,
     responses={
         200: {"description": "Server-Sent Events telemetry stream."},
         401: {"model": ErrorResponse, "description": "Unauthorized access."},
+        403: {"model": ErrorResponse, "description": "Access denied."},
         404: {"model": ErrorResponse, "description": "Run not found."},
         503: {"model": ErrorResponse, "description": "Database unavailable."},
     },
@@ -334,6 +455,11 @@ async def stream_analysis(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"detail": f"Analysis run '{run_id}' not found.", "code": "RUN_NOT_FOUND"},
             )
+        if run.user_id is not None and run.user_id != current_user.user_id and current_user.role != "ADMIN":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"detail": "Access denied: you do not have permission to view this analysis run.", "code": "FORBIDDEN"},
+            )
         return StreamingResponse(
             mock_analysis_provider.stream_telemetry(run_id),
             media_type="text/event-stream",
@@ -357,6 +483,14 @@ async def stream_analysis(
             detail={"detail": f"Analysis run '{run_id}' not found.", "code": "RUN_NOT_FOUND"},
         )
 
+    run_row = run_rep.data
+    owner_id = run_row.get("user_id")
+    if owner_id and str(owner_id) != str(current_user.user_id) and current_user.role != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"detail": "Access denied: you do not have permission to view this analysis run.", "code": "FORBIDDEN"},
+        )
+
     return StreamingResponse(
         stream_telemetry_from_db(db=db, run_id=run_id),
         media_type="text/event-stream",
@@ -371,6 +505,7 @@ async def stream_analysis(
     responses={
         200: {"model": AnalysisReportResponse, "description": "Underwriting Dossier report."},
         401: {"model": ErrorResponse, "description": "Unauthorized access."},
+        403: {"model": ErrorResponse, "description": "Access denied."},
         404: {"model": ErrorResponse, "description": "Run not found."},
         409: {"model": ErrorResponse, "description": "Run has not completed yet."},
         503: {"model": ErrorResponse, "description": "Database unavailable."},
@@ -390,6 +525,12 @@ async def get_report(
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail={"detail": f"Analysis run '{run_id}' not found.", "code": "RUN_NOT_FOUND"},
+            )
+
+        if run.user_id is not None and run.user_id != current_user.user_id and current_user.role != "ADMIN":
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"detail": "Access denied: you do not have permission to view this analysis report.", "code": "FORBIDDEN"},
             )
 
         if run.status != AnalysisStatus.COMPLETED or run.report is None:
@@ -420,6 +561,13 @@ async def get_report(
         )
 
     run_row = run_rep.data
+    owner_id = run_row.get("user_id")
+    if owner_id and str(owner_id) != str(current_user.user_id) and current_user.role != "ADMIN":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"detail": "Access denied: you do not have permission to view this analysis report.", "code": "FORBIDDEN"},
+        )
+
     run_status = str(run_row.get("status", "PROCESSING"))
 
     if run_status not in ("COMPLETED", "DEGRADED"):

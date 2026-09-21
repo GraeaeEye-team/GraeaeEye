@@ -32,11 +32,11 @@
 						<form id="login-form">
 							<div class="form-group">
 								<label for="login-email">Corporate Email</label>
-								<input type="email" id="login-email" required placeholder="analyst@graeae.eye" value="analyst@graeae.eye">
+								<input type="email" id="login-email" required placeholder="analyst@graeae.eye">
 							</div>
 							<div class="form-group">
 								<label for="login-password">Password</label>
-								<input type="password" id="login-password" required placeholder="••••••••" value="correct-horse-battery-staple">
+								<input type="password" id="login-password" required placeholder="••••••••">
 							</div>
 							<button type="submit" class="btn btn-primary">Sign In to Dashboard</button>
 							<div id="login-error" class="error-msg"></div>
@@ -86,162 +86,237 @@
 
 		<!-- WORKSPACE: VISIBLE WHEN LOGGED IN -->
 		<div id="workspace" style="display: none;">
-			<!-- SECTION 1: INGESTION GATEWAY & WIZARD -->
-			<section id="wizard-section" class="card">
-				<h2>1. Enterprise Underwriting & Multi-Document Ingestion</h2>
-				<p class="section-desc">Declare SME corporate identifiers and upload financial documents for automated risk evaluation.</p>
+			<!-- WORKSPACE NAVIGATION TABS -->
+			<div class="workspace-tabs">
+				<button id="tab-btn-analysis" class="tab-btn active" onclick="switch_tab('analysis')">🚀 Новый экспресс-анализ</button>
+				<button id="tab-btn-history" class="tab-btn" onclick="switch_tab('history')">📋 Реестр кредитных досье</button>
+			</div>
 
-				<form id="analysis-form">
-					<div class="form-grid">
-						<div class="form-group">
-							<label for="company_name">Company Legal Name *</label>
-							<input type="text" id="company_name" name="input_company_name" required placeholder="Universal Agro Trade SRL" value="Universal Agro Trade SRL">
-						</div>
-						<div class="form-group">
-							<label for="tax_id">National Tax ID (IDNO) *</label>
-							<input type="text" id="tax_id" name="input_tax_id" required placeholder="1003600099881" value="1003600099881">
-						</div>
-						<div class="form-group">
-							<label for="industry_code">Industry Classification (NACE/CAEM) *</label>
-							<input type="text" id="industry_code" name="input_industry_code" required placeholder="G46" value="G46">
-						</div>
-					</div>
+			<!-- TAB 1: ANALYSIS WORKFLOW -->
+			<div id="analysis-tab-pane">
+				<!-- SECTION 1: INGESTION GATEWAY & WIZARD -->
+				<section id="wizard-section" class="card">
+					<h2>1. Enterprise Underwriting & Multi-Document Ingestion</h2>
+					<p class="section-desc">Declare SME corporate identifiers and upload financial documents for automated risk evaluation.</p>
 
-					<div class="drop-zones-grid">
-						<!-- Dropzone A: Bank Statement -->
-						<div class="drop-zone" id="dz-statement">
-							<div class="dz-header">
-								<span class="dz-icon">📄</span>
-								<h4>Bank Statement Ledger</h4>
-								<span class="dz-badge req">Required</span>
+					<form id="analysis-form">
+						<div class="form-grid">
+							<div class="form-group">
+								<label for="company_name">Company Legal Name *</label>
+								<input type="text" id="company_name" name="input_company_name" required placeholder="Universal Agro Trade SRL" value="Universal Agro Trade SRL">
 							</div>
-							<p class="dz-hint">CSV / XLSX format with dates, inflows, outflows, and closing balances.</p>
-							<input type="file" id="file-statement" name="bank_statement_file" accept=".csv,.xlsx">
-							<div class="file-name-display" id="name-statement">No file chosen</div>
-						</div>
-
-						<!-- Dropzone B: Invoices -->
-						<div class="drop-zone" id="dz-invoices">
-							<div class="dz-header">
-								<span class="dz-icon">📑</span>
-								<h4>Commercial Invoices</h4>
-								<span class="dz-badge opt">Optional</span>
+							<div class="form-group">
+								<label for="tax_id">National Tax ID (IDNO) *</label>
+								<input type="text" id="tax_id" name="input_tax_id" required placeholder="1003600099881" value="1003600099881">
 							</div>
-							<p class="dz-hint">Receivables & Payables (issue/due dates, counterparties, settlement status).</p>
-							<input type="file" id="file-invoices" name="invoices_file" accept=".csv,.xlsx">
-							<div class="file-name-display" id="name-invoices">No file chosen</div>
-						</div>
-
-						<!-- Dropzone C: Credit Obligations -->
-						<div class="drop-zone" id="dz-credits">
-							<div class="dz-header">
-								<span class="dz-icon">🏦</span>
-								<h4>Credit Obligations</h4>
-								<span class="dz-badge opt">Optional</span>
+							<div class="form-group">
+								<label for="industry_code">Industry Classification (NACE/CAEM) *</label>
+								<input type="text" id="industry_code" name="input_industry_code" required placeholder="G46" value="G46">
 							</div>
-							<p class="dz-hint">Existing credit lines, principal debt, monthly debt service, delinquency count.</p>
-							<input type="file" id="file-credits" name="credit_obligations_file" accept=".csv,.xlsx">
-							<div class="file-name-display" id="name-credits">No file chosen</div>
+						</div>
+
+						<div class="drop-zones-grid">
+							<!-- Dropzone A: Bank Statement -->
+							<div class="drop-zone" id="dz-statement">
+								<div class="dz-header">
+									<span class="dz-icon">📄</span>
+									<h4>Bank Statement Ledger</h4>
+									<span class="dz-badge req">Required</span>
+								</div>
+								<p class="dz-hint">CSV / XLSX format with dates, inflows, outflows, and closing balances.</p>
+								<input type="file" id="file-statement" name="bank_statement_file" accept=".csv,.xlsx">
+								<div class="file-name-display" id="name-statement">No file chosen</div>
+							</div>
+
+							<!-- Dropzone B: Invoices -->
+							<div class="drop-zone" id="dz-invoices">
+								<div class="dz-header">
+									<span class="dz-icon">📑</span>
+									<h4>Commercial Invoices</h4>
+									<span class="dz-badge opt">Optional</span>
+								</div>
+								<p class="dz-hint">Receivables & Payables (issue/due dates, counterparties, settlement status).</p>
+								<input type="file" id="file-invoices" name="invoices_file" accept=".csv,.xlsx">
+								<div class="file-name-display" id="name-invoices">No file chosen</div>
+							</div>
+
+							<!-- Dropzone C: Credit Obligations -->
+							<div class="drop-zone" id="dz-credits">
+								<div class="dz-header">
+									<span class="dz-icon">🏦</span>
+									<h4>Credit Obligations</h4>
+									<span class="dz-badge opt">Optional</span>
+								</div>
+								<p class="dz-hint">Existing credit lines, principal debt, monthly debt service, delinquency count.</p>
+								<input type="file" id="file-credits" name="credit_obligations_file" accept=".csv,.xlsx">
+								<div class="file-name-display" id="name-credits">No file chosen</div>
+							</div>
+						</div>
+
+						<div class="form-footer">
+							<button type="submit" id="btn-start-analysis" class="btn btn-primary btn-lg">
+								🚀 Start Multi-Document Risk Analysis
+							</button>
+							<div id="wizard-error" class="error-msg"></div>
+						</div>
+					</form>
+				</section>
+
+				<!-- SECTION 2: LIVE EXECUTION CONSOLE & SSE TELEMETRY -->
+				<section id="telemetry-section" class="card" style="display: none;">
+					<div class="section-header-flex">
+						<h2>2. Live Execution Console & Telemetry Stream</h2>
+						<div class="header-actions-group">
+							<button class="btn btn-outline btn-sm" onclick="reset_workspace_for_new_analysis()">🔄 Начать новый анализ</button>
+							<span class="badge" id="run-status-badge">PROCESSING</span>
+						</div>
+					</div>
+					<p class="section-desc">Real-time SSE event stream from PostgreSQL <code>analysis_logs</code>.</p>
+
+					<div class="run-meta-panel">
+						<span><strong>Run ID:</strong> <code id="display-run-id"></code></span>
+						<span><strong>Target Entity:</strong> <span id="display-entity"></span></span>
+						<span><strong>Tax ID:</strong> <span id="display-tax-id"></span></span>
+					</div>
+
+					<!-- Progress bar -->
+					<div class="progress-bar-container">
+						<div class="progress-bar-fill" id="pipeline-progress-bar" style="width: 5%;">5%</div>
+					</div>
+					<div class="pipeline-stages-tracker" id="stages-tracker">
+						<span class="stage-tag active" id="st-queued">1. Queued</span>
+						<span class="stage-tag" id="st-ingestion">2. Ingestion</span>
+						<span class="stage-tag" id="st-dataload">3. Data Graph</span>
+						<span class="stage-tag" id="st-mleval">4. Submodules (9D)</span>
+						<span class="stage-tag" id="st-scoring">5. Scoring & LLM</span>
+						<span class="stage-tag" id="st-complete">6. Complete</span>
+					</div>
+
+					<!-- 9 Submodules Status Badges -->
+					<div class="submodules-status-grid" id="submodules-status-grid">
+						<div class="submodule-badge" id="badge-OS"><span class="sm-code">OS</span> <span class="sm-state">PENDING</span></div>
+						<div class="submodule-badge" id="badge-WPR"><span class="sm-code">WPR</span> <span class="sm-state">PENDING</span></div>
+						<div class="submodule-badge" id="badge-MSR"><span class="sm-code">MSR</span> <span class="sm-state">PENDING</span></div>
+						<div class="submodule-badge" id="badge-CD"><span class="sm-code">CD</span> <span class="sm-state">PENDING</span></div>
+						<div class="submodule-badge" id="badge-SD"><span class="sm-code">SD</span> <span class="sm-state">PENDING</span></div>
+						<div class="submodule-badge" id="badge-ICR"><span class="sm-code">ICR</span> <span class="sm-state">PENDING</span></div>
+						<div class="submodule-badge" id="badge-CFS"><span class="sm-code">CFS</span> <span class="sm-state">PENDING</span></div>
+						<div class="submodule-badge" id="badge-RQ"><span class="sm-code">RQ</span> <span class="sm-state">PENDING</span></div>
+						<div class="submodule-badge" id="badge-ICDL"><span class="sm-code">ICDL</span> <span class="sm-state">PENDING</span></div>
+					</div>
+
+					<!-- Terminal Log Window -->
+					<div class="terminal-container">
+						<div class="terminal-header">
+							<span>Console Output (EventSource: /api/v1/analysis/stream)</span>
+							<button class="btn btn-sm btn-outline" onclick="clear_terminal()">Clear</button>
+						</div>
+						<pre id="terminal-logs" class="terminal-body"></pre>
+					</div>
+				</section>
+
+				<!-- SECTION 3: FINAL UNDERWRITING DOSSIER -->
+				<section id="report-section" class="card" style="display: none;">
+					<div class="report-header-actions">
+						<div>
+							<h2>3. Credit Committee Underwriting Dossier & Diagnostics</h2>
+							<p class="section-desc">Комплексная оценка риска предприятия, детализация 9 подмодулей и аналитический меморандум.</p>
+						</div>
+						<button class="btn btn-primary" onclick="reset_workspace_for_new_analysis()">🔄 Начать новый расчет</button>
+					</div>
+
+					<!-- Executive Score Banner -->
+					<div class="score-banner">
+						<div class="score-gauge-card">
+							<div class="score-gauge-val" id="report-score">--</div>
+							<div class="score-gauge-label">Инвестиционный скоринг (0-100)</div>
+						</div>
+						<div class="verdict-card">
+							<div><strong>Категория риска:</strong> <span id="report-verdict-badge" class="badge">--</span></div>
+							<div><strong>Решение комитета:</strong> <span id="report-rec-badge" class="badge">--</span></div>
+							<div><strong>Вероятность дефолта (PD):</strong> <strong id="report-pd">--%</strong></div>
 						</div>
 					</div>
 
-					<div class="form-footer">
-						<button type="submit" id="btn-start-analysis" class="btn btn-primary btn-lg">
-							🚀 Start Multi-Document Risk Analysis
-						</button>
-						<div id="wizard-error" class="error-msg"></div>
+					<!-- Radar / Pillar Breakdown -->
+					<div class="chart-container">
+						<h3>Вклады 9 аналитических субмодулей в скоринг</h3>
+						<div id="radar-chart-wrapper" class="radar-wrapper">
+							<svg id="submodule-radar-svg" viewBox="0 0 500 300" width="100%" height="240"></svg>
+						</div>
 					</div>
-				</form>
-			</section>
 
-			<!-- SECTION 2: LIVE EXECUTION CONSOLE & SSE TELEMETRY -->
-			<section id="telemetry-section" class="card" style="display: none;">
-				<div class="section-header-flex">
-					<h2>2. Live Execution Console & Telemetry Stream</h2>
-					<span class="badge" id="run-status-badge">PROCESSING</span>
-				</div>
-				<p class="section-desc">Real-time SSE event stream from PostgreSQL <code>analysis_logs</code>.</p>
-
-				<div class="run-meta-panel">
-					<span><strong>Run ID:</strong> <code id="display-run-id"></code></span>
-					<span><strong>Target Entity:</strong> <span id="display-entity"></span></span>
-					<span><strong>Tax ID:</strong> <span id="display-tax-id"></span></span>
-				</div>
-
-				<!-- Progress bar -->
-				<div class="progress-bar-container">
-					<div class="progress-bar-fill" id="pipeline-progress-bar" style="width: 5%;">5%</div>
-				</div>
-				<div class="pipeline-stages-tracker" id="stages-tracker">
-					<span class="stage-tag active" id="st-queued">1. Queued</span>
-					<span class="stage-tag" id="st-ingestion">2. Ingestion</span>
-					<span class="stage-tag" id="st-dataload">3. Data Graph</span>
-					<span class="stage-tag" id="st-mleval">4. Submodules (9D)</span>
-					<span class="stage-tag" id="st-scoring">5. Scoring & LLM</span>
-					<span class="stage-tag" id="st-complete">6. Complete</span>
-				</div>
-
-				<!-- 9 Submodules Status Badges -->
-				<div class="submodules-status-grid" id="submodules-status-grid">
-					<div class="submodule-badge" id="badge-OS"><span class="sm-code">OS</span> <span class="sm-state">PENDING</span></div>
-					<div class="submodule-badge" id="badge-WPR"><span class="sm-code">WPR</span> <span class="sm-state">PENDING</span></div>
-					<div class="submodule-badge" id="badge-MSR"><span class="sm-code">MSR</span> <span class="sm-state">PENDING</span></div>
-					<div class="submodule-badge" id="badge-CD"><span class="sm-code">CD</span> <span class="sm-state">PENDING</span></div>
-					<div class="submodule-badge" id="badge-SD"><span class="sm-code">SD</span> <span class="sm-state">PENDING</span></div>
-					<div class="submodule-badge" id="badge-ICR"><span class="sm-code">ICR</span> <span class="sm-state">PENDING</span></div>
-					<div class="submodule-badge" id="badge-CFS"><span class="sm-code">CFS</span> <span class="sm-state">PENDING</span></div>
-					<div class="submodule-badge" id="badge-RQ"><span class="sm-code">RQ</span> <span class="sm-state">PENDING</span></div>
-					<div class="submodule-badge" id="badge-ICDL"><span class="sm-code">ICDL</span> <span class="sm-state">PENDING</span></div>
-				</div>
-
-				<!-- Terminal Log Window -->
-				<div class="terminal-container">
-					<div class="terminal-header">
-						<span>Console Output (EventSource: /api/v1/analysis/stream)</span>
-						<button class="btn btn-sm btn-outline" onclick="clear_terminal()">Clear</button>
+					<!-- Canonical 18D Feature Vector Table -->
+					<div class="feature-vector-container">
+						<div class="feature-vector-header" onclick="toggle_feature_vector()">
+							<h3>📊 Канонический вектор факторов риска (18D Canonical Metrics)</h3>
+							<span id="fv-toggle-icon">▼ Развернуть</span>
+						</div>
+						<div id="feature-vector-content" class="feature-vector-body" style="display: none;">
+							<p class="section-desc">18 стандартизированных финансовых индексов устойчивости бизнеса (шкала 0-100). Цветовые зоны риска: <span class="badge badge-danger">&lt; 40 Критический</span>, <span class="badge badge-warning">40 - 70 Умеренный</span>, <span class="badge badge-success">&gt; 70 Надежный</span>.</p>
+							<div class="table-responsive">
+								<table class="indices-table">
+									<thead>
+										<tr>
+											<th>Индекс / Метрика</th>
+											<th>Модуль</th>
+											<th>Значение</th>
+											<th>Зона риска</th>
+											<th>Экономическая интерпретация</th>
+										</tr>
+									</thead>
+									<tbody id="indices-table-body">
+									</tbody>
+								</table>
+							</div>
+						</div>
 					</div>
-					<pre id="terminal-logs" class="terminal-body"></pre>
-				</div>
-			</section>
 
-			<!-- SECTION 3: FINAL UNDERWRITING DOSSIER -->
-			<section id="report-section" class="card" style="display: none;">
-				<h2>3. Credit Committee Underwriting Dossier & Diagnostics</h2>
-				<p class="section-desc">Comprehensive quantitative evaluation, 9-submodule diagnostic breakdown, and generative Underwriting Memorandum.</p>
-
-				<!-- Executive Score Banner -->
-				<div class="score-banner">
-					<div class="score-gauge-card">
-						<div class="score-gauge-val" id="report-score">--</div>
-						<div class="score-gauge-label">Investment Attractiveness Score (0-100)</div>
+					<!-- LLM Synthesis / Executive Summary Card -->
+					<div class="memo-card">
+						<h3>Аналитический андеррайтинговый меморандум (LLM Synthesis)</h3>
+						<div id="report-memo" class="memo-content">Ожидание завершения аналитического пайплайна...</div>
 					</div>
-					<div class="verdict-card">
-						<div><strong>Risk Category:</strong> <span id="report-verdict-badge" class="badge">--</span></div>
-						<div><strong>Underwriting Verdict:</strong> <span id="report-rec-badge" class="badge">--</span></div>
-						<div><strong>Probability of Default (PD):</strong> <strong id="report-pd">--%</strong></div>
+
+					<!-- Granular Submodules Breakdown Cards -->
+					<div class="submodules-cards-container">
+						<h3>Детальные диагностические карточки подмодулей</h3>
+						<div id="submodules-reports-list" class="cards-grid"></div>
 					</div>
-				</div>
+				</section>
+			</div>
 
-				<!-- Radar / Pillar Breakdown -->
-				<div class="chart-container">
-					<h3>9 Submodules Risk Factor Attributions</h3>
-					<div id="radar-chart-wrapper" class="radar-wrapper">
-						<svg id="submodule-radar-svg" viewBox="0 0 500 300" width="100%" height="240"></svg>
+			<!-- TAB 2: HISTORY LEDGER -->
+			<div id="history-tab-pane" style="display: none;">
+				<section id="history-section" class="card">
+					<div class="section-header-flex">
+						<div>
+							<h2>Реестр проведенных кредитных анализов</h2>
+							<p class="section-desc">История и архив сформированных кредитных досье вашей учетной записи.</p>
+						</div>
+						<button class="btn btn-outline btn-sm" onclick="load_history()">🔄 Обновить реестр</button>
 					</div>
-				</div>
-
-				<!-- LLM Synthesis / Executive Summary Card -->
-				<div class="memo-card">
-					<h3>Generative Underwriting Memorandum (LLM Synthesis)</h3>
-					<div id="report-memo" class="memo-content">Awaiting analysis completion...</div>
-				</div>
-
-				<!-- Granular Submodules Breakdown Cards -->
-				<div class="submodules-cards-container">
-					<h3>Granular Submodule Diagnostic Cards</h3>
-					<div id="submodules-reports-list" class="cards-grid"></div>
-				</div>
-			</section>
+					<div class="table-responsive">
+						<table class="history-table">
+							<thead>
+								<tr>
+									<th>Дата и время</th>
+									<th>Компания</th>
+									<th>IDNO (Фискальный код)</th>
+									<th>Отрасль</th>
+									<th>Статус</th>
+									<th>Скоринг</th>
+									<th>Решение</th>
+									<th>Действие</th>
+								</tr>
+							</thead>
+							<tbody id="history-table-body">
+								<tr><td colspan="8" class="text-center">Загрузка реестра...</td></tr>
+							</tbody>
+						</table>
+					</div>
+				</section>
+			</div>
 		</div>
 	</main>
 
