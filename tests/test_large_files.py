@@ -5,7 +5,6 @@ Tests for chunking and large file handling with single schema mapping computatio
 from pathlib import Path
 import pytest
 from smart_credit_parser import UniversalDataParser, ParseOptions
-from smart_credit_parser.ai import MockLLMClient
 
 from tests.conftest import SCHEMA_PATH
 

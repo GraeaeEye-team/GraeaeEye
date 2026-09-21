@@ -3,8 +3,6 @@ API tests for FastAPI web endpoints and wizard flow.
 Uses TestClient from starlette / httpx.
 """
 
-from pathlib import Path
-import pytest
 from starlette.testclient import TestClient
 
 from smart_credit_parser.web.app import app

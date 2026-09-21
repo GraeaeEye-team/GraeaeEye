@@ -2,7 +2,6 @@
 Tests for AI MappingAgent, Heuristic fallback, Mock LLM retries, and caching.
 """
 
-from pathlib import Path
 import pytest
 from smart_credit_parser.schema.sql_parser import SQLSchemaParser
 from smart_credit_parser.ai import MappingAgent, MappingCache, MockLLMClient, HeuristicLLMClient

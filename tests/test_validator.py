@@ -2,7 +2,6 @@
 Tests for SchemaValidator: NOT NULL, CHECK, UNIQUE, and FK validations.
 """
 
-from pathlib import Path
 import pytest
 from smart_credit_parser.schema.sql_parser import SQLSchemaParser
 from smart_credit_parser.schema.validator import SchemaValidator

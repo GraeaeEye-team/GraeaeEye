@@ -5,7 +5,6 @@ Extended security tests:
 """
 
 from pathlib import Path
-import pytest
 
 from smart_credit_parser import UniversalDataParser, ParseOptions
 from smart_credit_parser.ai import MockLLMClient

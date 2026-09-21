@@ -5,13 +5,13 @@ Avoids redundant LLM invocations for recurring file structures and formats.
 
 from __future__ import annotations
 import hashlib
-import json
-from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List, Optional
 
 
 from ..schema.models import ColumnMapping, TableMapping
+
+__all__ = ["MappingCache", "TableMapping", "ColumnMapping"]
 
 
 class MappingCache:

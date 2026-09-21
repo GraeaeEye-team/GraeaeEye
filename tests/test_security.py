@@ -2,7 +2,6 @@
 Tests for security: prompt injection detection, input sanitization, and PII masking.
 """
 
-import pytest
 from smart_credit_parser.pipeline.sanitizer import SecuritySanitizer
 
 

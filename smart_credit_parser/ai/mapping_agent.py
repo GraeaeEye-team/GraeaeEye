@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 from typing import Any, Dict, List, Optional
 
-from ..schema.models import SchemaGraph, TableSchema
+from ..schema.models import SchemaGraph
 from .cache import MappingCache, TableMapping, ColumnMapping
 from .client import BaseLLMClient, get_default_llm_client
 from .prompt_templates import SYSTEM_MAPPING_PROMPT, USER_MAPPING_PROMPT_TEMPLATE

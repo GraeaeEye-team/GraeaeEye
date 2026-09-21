@@ -4,8 +4,8 @@ Bypasses LLM completely when input headers already match canonical schema.sql co
 """
 
 from __future__ import annotations
-from typing import List, Optional, Tuple
-from ..schema.models import SchemaGraph, TableSchema, ColumnMapping, TableMapping
+from typing import List, Optional
+from ..schema.models import SchemaGraph, ColumnMapping, TableMapping
 
 
 class FastPathDetector:

@@ -6,7 +6,7 @@ Validates records against TableSchema definitions derived from schema.sql.
 from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
-from .models import TableSchema, ColumnSchema
+from .models import TableSchema
 from ..pipeline.normalizer import DataNormalizer
 
 

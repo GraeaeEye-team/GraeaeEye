@@ -2,8 +2,6 @@
 Tests for dynamic SQL schema parser.
 """
 
-from pathlib import Path
-import pytest
 from smart_credit_parser.schema.sql_parser import SQLSchemaParser
 
 from tests.conftest import SCHEMA_PATH

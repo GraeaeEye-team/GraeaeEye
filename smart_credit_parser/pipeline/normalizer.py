@@ -5,7 +5,7 @@ Converts arbitrary client inputs into PostgreSQL 16 canonical types according to
 
 from __future__ import annotations
 import re
-from datetime import date, datetime
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 import uuid
 

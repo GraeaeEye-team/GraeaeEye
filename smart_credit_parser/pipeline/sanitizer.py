@@ -4,7 +4,7 @@ Security sanitizer for prompt injection defense and PII telemetry masking.
 
 from __future__ import annotations
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 
 class SecuritySanitizer:

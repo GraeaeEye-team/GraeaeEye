@@ -4,7 +4,7 @@ Ensures correct insertion order respecting foreign keys.
 """
 
 from typing import Dict, List, Set
-from .models import TableSchema, SchemaGraph
+from .models import TableSchema
 
 
 def compute_topological_order(tables: Dict[str, TableSchema]) -> List[str]:

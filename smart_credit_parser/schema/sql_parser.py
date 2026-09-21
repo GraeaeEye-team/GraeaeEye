@@ -147,7 +147,6 @@ class SQLSchemaParser:
 
         for defn in definitions:
             line = " ".join(defn.split()).strip()
-            upper_line = line.upper()
 
             # 1. Table-level PRIMARY KEY (col1, col2)
             pk_match = re.match(r"^PRIMARY\s+KEY\s*\((.*?)\)", line, re.IGNORECASE)

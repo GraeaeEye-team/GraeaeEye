@@ -2,7 +2,6 @@
 Tests for FastPath canonical detector (0 LLM calls for standard format).
 """
 
-from pathlib import Path
 import pytest
 from smart_credit_parser.schema.sql_parser import SQLSchemaParser
 from smart_credit_parser.pipeline.fast_path import FastPathDetector

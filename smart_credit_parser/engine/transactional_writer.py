@@ -5,7 +5,7 @@ dry-run preview, atomic rollback, and automatic conflict resolution.
 
 from __future__ import annotations
 import sqlite3
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 
 class TransactionalWriter:

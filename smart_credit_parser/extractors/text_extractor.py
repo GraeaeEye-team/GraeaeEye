@@ -49,8 +49,6 @@ class TextExtractor(BaseExtractor):
             return []
 
         # 1. Try key-value blocks (separated by blank lines or multiple records)
-        # Look for "Key: Value" patterns
-        kv_pairs: Dict[str, str] = {}
         has_colon_kv = False
         for l in lines[:20]:
             if ":" in l:

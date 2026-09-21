@@ -4,7 +4,6 @@ Tests for all format extractors (CSV, Excel, JSON, XML, Text/PDF).
 
 import json
 from pathlib import Path
-import pytest
 import openpyxl
 
 from smart_credit_parser.extractors import (

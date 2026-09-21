@@ -12,7 +12,6 @@ import openpyxl
 from smart_credit_parser import (
     UniversalDataParser,
     ParseOptions,
-    SQLSchemaParser,
 )
 
 from tests.conftest import SCHEMA_PATH

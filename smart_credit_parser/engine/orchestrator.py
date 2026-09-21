@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
-from ..schema.models import SchemaGraph, TableSchema, TableMapping
+from ..schema.models import SchemaGraph, TableMapping
 from ..schema.sql_parser import SQLSchemaParser
 from ..schema.validator import SchemaValidator
 from ..extractors.registry import get_extractor_for_file

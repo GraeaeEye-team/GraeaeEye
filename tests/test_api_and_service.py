@@ -3,7 +3,6 @@ Integration and RBAC tests for ParserModuleService (app_interface.py).
 """
 
 import sqlite3
-from pathlib import Path
 import pytest
 
 from smart_credit_parser.app_interface import ParserModuleService

@@ -4,7 +4,7 @@ Extractor Registry for automatic format detection.
 
 from __future__ import annotations
 from pathlib import Path
-from typing import List, Type, Optional
+from typing import List, Type
 
 from .base import BaseExtractor
 from .csv_extractor import CSVExtractor

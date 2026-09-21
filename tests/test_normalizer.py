@@ -2,7 +2,6 @@
 Tests for DataNormalizer: dates, currencies, decimals, booleans, and enums.
 """
 
-import pytest
 from smart_credit_parser.pipeline.normalizer import DataNormalizer
 
 
