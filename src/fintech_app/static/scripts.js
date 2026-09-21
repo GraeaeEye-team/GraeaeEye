@@ -124,6 +124,7 @@ function update_auth_ui() {
 		if (roleElem) roleElem.innerText = currentUser.role || "ANALYST";
 		if (emailElem) emailElem.innerText = currentUser.email || "";
 	} else {
+		clear_report();
 		if (guestBlock) guestBlock.style.display = "block";
 		if (loggedInBlock) loggedInBlock.style.display = "none";
 		if (workspace) workspace.style.display = "none";
@@ -598,6 +599,80 @@ function render_submodule_cards(submodules) {
 		container.appendChild(card);
 	});
 }
+
+function clear_report() {
+	const company_name = document.getElementById("company_name");
+	if (company_name) company_name.value = company_name.placeholder;
+
+	const input_tax_id = document.getElementById("input_tax_id");
+	if (input_tax_id) input_tax_id.value = input_tax_id.placeholder;
+
+	const industry_code = document.getElementById("industry_code");
+	if (industry_code) industry_code.value = industry_code.placeholder;
+
+	const name_statement = document.getElementById("name-statement");
+	if (name_statement) {
+		name_statement.innerHTML = "No file chosen";
+		verdictElem.className = "";
+	}
+
+	const name_invoices = document.getElementById("name-invoices");
+	if (name_invoices) {
+		name_invoices.innerHTML = "No file chosen";
+		verdictElem.className = "";
+	}
+
+	const name_credits = document.getElementById("name-credits");
+	if (name_credits) {
+		name_credits.innerHTML = "No file chosen";
+		verdictElem.className = "";
+	}
+
+	const file_statement = document.getElementById("file-statement");
+	if (file_statement) file_statement.value = "";
+
+	const file_invoices = document.getElementById("file-invoices");
+	if (file_invoices) file_invoices.value = "";
+
+	const file_credits = document.getElementById("file-credits");
+	if (file_credits) file_credits.value = "";
+
+	const reportSection = document.getElementById("report-section");
+	if (reportSection) reportSection.style.display = "none";
+
+	// Score & verdicts
+	const scoreElem = document.getElementById("report-score");
+	if (scoreElem) scoreElem.innerText = "--";
+
+	const verdictElem = document.getElementById("report-verdict-badge");
+	if (verdictElem) {
+		verdictElem.innerText = "--";
+		verdictElem.className = "badge";
+	}
+
+	const recElem = document.getElementById("report-rec-badge");
+	if (recElem) {
+		recElem.innerText = "--";
+		recElem.className = "badge";
+	}
+
+	const pdElem = document.getElementById("report-pd");
+	if (pdElem) {
+		pdElem.innerText = "--%";
+	}
+
+	const memoElem = document.getElementById("report-memo");
+	if (memoElem) {
+		memoElem.innerHTML = "Awaiting analysis completion...";
+	}
+
+	const svg = document.getElementById("submodule-radar-svg");
+	if (svg) svg.innerHTML = "";
+
+	const container = document.getElementById("submodules-reports-list");
+	if (container) container.innerHTML = "";
+}
+
 
 // =========================================================================
 // 6. INITIALIZATION HOOK

@@ -16,10 +16,9 @@ from __future__ import annotations
 
 import asyncio
 import os
-import re
 import sys
 import time
-from typing import Any, Dict, List
+from typing import List
 
 import httpx
 import pytest
@@ -195,7 +194,7 @@ async def test_async_llm_client_integration():
     assert len(result.text) > 50, "Generated memorandum text is too short"
     assert "ollama" in result.synthesis_engine.lower(), f"Unexpected engine: {result.synthesis_engine}"
 
-    print(f"\n[PASS] Application AsyncLLMClient generated memorandum successfully:")
+    print("\n[PASS] Application AsyncLLMClient generated memorandum successfully:")
     print(f"       Engine: {result.synthesis_engine}")
     print(f"       Inference time: {result.inference_time_ms:.1f}ms")
     print(f"       Text preview: \"{result.text[:150]}...\"")

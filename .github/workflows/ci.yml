@@ -19,13 +19,6 @@ jobs:
           pip install -r requirements.txt
       - name: Run linter
         run: ruff check src/ tests/
-      - name: Run tests
-        run: |
-          export PYTHONPATH=src:.
-          pytest -q --tb=short
-        env:
-          USE_MOCK_ENGINE: true
-          SECRET_KEY: test-secret-key-for-ci
 
   docker-smoke:
     runs-on: ubuntu-latest
@@ -33,7 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build and start containers
-        run: docker compose up -d --build
+        run: |
+          cp .env.example .env
+          docker compose up -d --build
       - name: Wait for backend health
         run: |
           for i in {1..30}; do

@@ -544,3 +544,36 @@ body {
     max-height: 100px;
     overflow-y: auto;
 }
+
+@media only screen and (max-width: 900px) {
+    .brand-subtitle {
+        display: none;
+    }
+    .auth-forms-container,
+    .run-meta-panel {
+        display: grid;
+    }
+    .form-grid,
+    .drop-zones-grid,
+    .submodules-status-grid,
+    .cards-grid {
+        display: block;
+    }
+    .submodule-badge,
+    .sm-code {
+        display: inline !important;
+    }
+    .drop-zone,
+    .submodule-report-card {
+        margin-bottom: 0.5em;
+    }
+    .auth-forms-container label,
+    .auth-forms-container input {
+        display: inline;
+    }
+    .auth-forms-container input {
+        min-width: 50%;
+        width: auto;
+        float: right;
+    }
+}
