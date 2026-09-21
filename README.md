@@ -1,201 +1,213 @@
-# GraeaeEye: Explainable SME Underwriting Engine
+# Smart Credit System: Universal AI Data Parser Module
 
-[![CI](https://github.com/GraeaeEye-team/GraeaeEye/actions/workflows/ci.yml/badge.svg)](https://github.com/GraeaeEye-team/GraeaeEye/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python: 3.12](https://img.shields.io/badge/Python-3.12-brightgreen.svg)](https://www.python.org/)
-[![PostgreSQL: 16](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
+Модуль универсального парсинга и приведения входящих данных клиента произвольного формата к канонической реляционной схеме базы данных PostgreSQL 16 (`schema.sql`).
 
-## What It Is
-**GraeaeEye** — это институциональный аналитический скоринговый комплекс для оценки кредитоспособности и финансовой устойчивости предприятий малого и среднего бизнеса (SME). Система проводит глубокий многофакторный анализ финансовых потоков, платежной дисциплины, контрагентских связей и макроэкономических рисков, вычисляет вероятности дефолта (PD) и формирует детальный кредитный меморандум андеррайтера.
-
----
-
-## Архитектура и ключевые компоненты
-
-### 1. Аналитическое ядро и скоринг
-- **9 аналитических субмодулей**:
-  - `OS` (Ownership Stability) — структура владения и стабильность менеджмента.
-  - `WPR` (Web Presence & Reputation) — цифровая репутация и юридические риски.
-  - `MSR` (Macro & Sector Resilience) — макроэкономическая устойчивость отрасли.
-  - `CD` (Client Dependency) — концентрация и зависимость от покупателей.
-  - `SD` (Supplier Dependency) — концентрация и зависимость от поставщиков.
-  - `ICR` (Immediate Cash Readiness) — оперативная ликвидность (Cash Ratio, DCOH).
-  - `CFS` (Cash Flow Stability) — стабильность и волатильность денежных потоков.
-  - `RQ` (Receivables Quality) — качество дебиторской задолженности и оборачиваемость.
-  - `ICDL` (Internal Credit Discipline & Leverage) — кредитная история и долговая нагрузка.
-- **18D канонический вектор признаков** (Canonical Financial Indices).
-- **Взвешенный скоринг с динамической перенормировкой** при отсутствии части документов.
-
-### 2. Прием и нормализация данных (Ingestion)
-- Многоформатные парсеры: **CSV**, **XLSX**, **XLS**.
-- Автоматическое определение диалектов, разделителей (`,`, `;`, `\t`) и заголовков.
-- Мультиязычная поддержка (русский, молдавский/румынский, английский).
-- Идемпотентная загрузка с транзакционным откатом при повреждении данных.
-
-### 3. Генерация кредитного меморандума (LLM Synthesis & Report Builder)
-Модульная стратегия формирования экспертных заключений андеррайтера (`AsyncLLMClient`):
-- **Локальная нейросеть (Ollama)**: быстрый, приватный инференс на локальном оборудовании без отправки данных во внешние облака (`llama3.2:1b`, `llama3:8b`, `qwen2.5` и др.).
-- **Облачная нейросеть (OpenAI)**: `gpt-4o-mini` при наличии API-ключа.
-- **Институциональный Report Builder (не-ИИ режим по умолчанию)**: детерминированный генератор структурированного меморандума кредитного комитета (нулевая задержка, полная автономность без необходимости устанавливать нейросети).
-
-### 4. Веб-интерфейс и телеметрия
-- **Веб-дашборд** на `http://localhost:8000`: интерактивная форма загрузки файлов, визуализация скоринга и круговой спидометр риска, отображение полного меморандума.
-- **Real-time SSE-стриминг** (`/api/v1/analysis/stream/{run_id}`): пошаговая телеметрия выполнения аналитического пайплайна с фоновыми heartbeat-сообщениями.
-
-### 5. База данных и Zero-Wipeout бэкапы
-- Асинхронный DAL на **PostgreSQL 16** (57 методов с защитой от SQL-инъекций).
-- **Демон бэкапов** (`backup_daemon.py`): периодические дампы (`pg_dump -F c`) с защитой от перезаписи пустой базой (Zero-Wipeout Protection).
-- **Автоматическое восстановление** (`AUTO_RESTORE_LAST_DB_BACKUP=true`): автоматическое наполнение таблиц из последнего валидного бэкапа при старте Docker.
+Включает в себя:
+- Автономное ядро парсинга с динамической интроспекцией DDL без хардкода схемы.
+- Адаптеры форматов: CSV/TSV, Excel (.xlsx, .xlsm), JSON/JSONL, XML, TXT, PDF.
+- Fast-Path для эталонных файлов (0 вызовов LLM).
+- Гибридный AI-маппинг (Google Gemini + интеллектуальный локальный эвристический матчер).
+- Детерминированный нормализатор типов (даты, суммы с валютами, синонимы ENUM, булевы флаги).
+- Строгий валидатор ограничений `schema.sql` (`NOT NULL`, `CHECK`, `UNIQUE`, `ENUM`, внешние ключи).
+- Атомарный транзакционный писатель с защитой от дублирования (`ON CONFLICT DO NOTHING`).
+- Единый публичный сервисный контракт `ParserModuleService` с ролевой моделью доступа (RBAC: `ANALYST`, `UNDERWRITER`, `ADMIN`).
+- Интерактивный 4-шаговый веб-мастер (Upload $\rightarrow$ AI Mapping $\rightarrow$ Dry-Run $\rightarrow$ Commit) на базе FastAPI.
 
 ---
 
-## Быстрый старт
+## 📋 Содержание
 
-### Вариант 1: Запуск через Docker Compose (Рекомендуется)
+- [Установка и окружение](#-установка-и-окружение)
+- [Переменные окружения (.env)](#-переменные-окружения-env)
+- [Запуск тестов](#-запуск-тестов)
+- [Запуск веб-интерфейса мастера](#-запуск-веб-интерфейса-мастера)
+- [Программное использование (API сервиса)](#-программное-использование-api-сервиса)
+- [Консольный пример (CLI)](#-консольный-пример-cli)
+- [Ролевая модель доступа (RBAC)](#-ролевая-модель-доступа-rbac)
+- [Как добавить новый формат данных](#-как-добавить-новый-формат-данных)
+- [Что делать при изменении schema.sql](#-что-делать-при-изменении-schemasql)
 
-По умолчанию проект запускается в надежном **автономном режиме (без ИИ)** — кредитный меморандум формируется институциональным сборщиком мгновенно:
+---
 
-```bash
+## 🛠 Установка и окружение
+
+Требуется Python 3.10 или новее.
+
+```powershell
 # 1. Клонирование репозитория
-git clone https://github.com/GraeaeEye-team/GraeaeEye.git
-cd GraeaeEye
+git clone <URL_РЕПОЗИТОРИЯ>
+cd smart_credit_parser
 
-# 2. Создание конфига (если еще не создан)
-cp .env.example .env
+# 2. Создание и активация виртуального окружения
+python -m venv .venv
+# Для Windows PowerShell:
+.venv\Scripts\Activate.ps1
+# Для Linux/macOS:
+source .venv/bin/activate
 
-# 3. Запуск контейнеров (PostgreSQL + Backend + Backup Daemon)
-docker compose up -d --build
-
-# 4. Проверка статуса
-curl -f http://localhost:8000/api/v1/health
-
-# 5. Открытие веб-интерфейса
-# Перейдите в браузере на: http://localhost:8000
+# 3. Установка зависимостей
+pip install --upgrade pip
+pip install -r requirements.txt
+# Или установка пакета в режиме разработки:
+pip install -e .[dev]
 ```
 
 ---
 
-## Локальная нейросеть (Ollama) и интерактивный установщик
+## ⚙ Переменные окружения (.env)
 
-В проект интегрирована поддержка локальных LLM для генерации развернутых кредитных меморандумов.
+Скопируйте шаблон `.env.example` в `.env` при необходимости кастомизации:
 
-### Почему Ollama работает на хосте, а не в Docker?
-1. **Экономия дискового пространства корня**: Docker-образ Ollama весит ~5.5 ГБ, а распаковка слоев может переполнить корневой раздел системы (`/`).
-2. **Безопасное хранение весов**: веса моделей скачиваются в домашнюю директорию `~/.ollama` на основном диске пользователя.
-3. **Прямой доступ к GPU/CPU**: максимальная скорость генерации токенов без накладных расходов виртуализации Docker.
-
-### Интерактивная установка и запуск (`setup_ollama.sh`)
-
-В корне репозитория находится интерактивный скрипт настройки:
-
-```bash
-./setup_ollama.sh
+```powershell
+Copy-Item .env.example .env
 ```
-
-**Что делает скрипт:**
-1. Проверяет наличие Ollama в системе (и предлагает установить одной кнопкой, если ее нет).
-2. Предоставляет выбор модели:
-   - `llama3.2:1b` *(рекомендуется)* — ультралегкая (~1.3 ГБ), работает быстро даже на CPU.
-   - `llama3:8b` — глубокий аналитический синтез для мощных систем с GPU/VRAM.
-   - Любая пользовательская модель.
-3. Автоматически сканирует сетевые порты и находит свободный (по умолчанию `11434`).
-4. Настраивает Ollama на прослушивание всех интерфейсов `0.0.0.0`, чтобы Docker-контейнеры могли обращаться к ней через `host.docker.internal`.
-5. Автоматически обновляет файл `.env`:
-   - `LLM_PROVIDER=ollama`
-   - `LLM_MODEL=llama3.2:1b`
-   - `OLLAMA_HOST=http://host.docker.internal:11434`
-
-### Важная настройка сетевой доступности Ollama (0.0.0.0)
-
-Если Ollama установлена как системный сервис Linux (systemd), по умолчанию она принимает подключения только с локального `127.0.0.1`. Чтобы контейнер Docker мог до нее достучаться через `host.docker.internal`, выполните:
-
-```bash
-sudo mkdir -p /etc/systemd/system/ollama.service.d
-echo -e '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"' | sudo tee /etc/systemd/system/ollama.service.d/override.conf
-sudo systemctl daemon-reload
-sudo systemctl restart ollama
-```
-
-*(Скрипт `./setup_ollama.sh` проверяет и настраивает это автоматически).*
-
-### Проверка работоспособности Ollama
-
-Для проверки готовности сервера и модели создан тест:
-
-```bash
-# Быстрая интерактивная диагностика в консоли
-python3 tests/test_ollama_server.py
-
-# Либо через pytest (если Ollama выключена, тесты чисто пропускаются как SKIPPED)
-pytest tests/test_ollama_server.py -v
-```
-
-Тест проверяет:
-- [x] Доступность HTTP API и пинг сервера (< 2 сек).
-- [x] Наличие выбранной модели в кэше Ollama.
-- [x] Реальный инференс нейросетью с замером времени ответа.
-- [x] Интеграцию с `AsyncLLMClient` приложения.
-
-### Как вернуться к режиму без нейросети
-
-Если вы хотите отключить Ollama и использовать мгновенный институциональный генератор:
-1. В `.env` очистите значение: `OLLAMA_HOST=` и укажите `LLM_PROVIDER=auto`.
-2. Перезапустите бэкенд: `docker compose restart backend`.
-
----
-
-## Конфигурация (.env)
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
-| `APP_ENV` | `development` | Окружение приложения (`development`, `production`). |
-| `LOG_LEVEL` | `INFO` | Уровень логирования (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
-| `SECRET_KEY` | `change_me...` | Секретный ключ для подписи JWT-токенов. |
-| `POSTGRES_SERVER` | `postgres` | Адрес сервера PostgreSQL (для локального запуска `localhost`). |
-| `POSTGRES_PORT` | `5432` | Порт PostgreSQL. |
-| `POSTGRES_USER` | `postgres` | Пользователь БД. |
-| `POSTGRES_PASSWORD`| `postgres` | Пароль БД. |
-| `POSTGRES_DB` | `graeae_eye_db` | Имя базы данных. |
-| `LLM_PROVIDER` | `auto` | Провайдер синтеза: `auto`, `ollama`, `openai`, `fallback`. |
-| `LLM_MODEL` | `llama3.2:1b` | Модель для генерации меморандума (`llama3.2:1b`, `llama3:8b`, `gpt-4o-mini`). |
-| `OLLAMA_HOST` | *(пусто)* | Адрес Ollama (`http://host.docker.internal:11434` для Docker). Пусто = не-ИИ режим. |
-| `OPENAI_API_KEY` | *(пусто)* | API-ключ OpenAI (опционально, если используется OpenAI). |
-| `LLM_INFERENCE_TIMEOUT` | `300.0` | Лимит времени на ответ нейросети в секундах. |
-| `LLM_HEARTBEAT_INTERVAL`| `10.0` | Интервал отправки сообщений о статусе генерации в SSE. |
-| `BACKUP_INTERVAL_SECONDS`| `300` | Интервал создания резервных копий БД демоном. |
-| `AUTO_RESTORE_LAST_DB_BACKUP` | `false` | Если `true`, при старте Docker таблицы наполняются из последнего бэкапа. |
+| `SCHEMA_PATH` | `schema.sql` | Путь к каноническому DDL-файлу PostgreSQL 16. |
+| `GEMINI_API_KEY` | *(пусто)* | API-ключ Google Gemini. Если не задан, автоматически используется быстрый локальный мультиязычный эвристический матчер (работает офлайн, 0 расходов). |
+| `GEMINI_MODEL` | `gemini-2.0-flash` | Модель Gemini для семантического вывода сложных маппингов. |
+| `DATABASE_URL` | *(пусто)* | Строка подключения к PostgreSQL (например, `postgresql://user:pass@localhost:5432/smart_credit`). Если не задана, модуль работает в режиме in-memory проверки. |
+| `HOST` | `127.0.0.1` | Хост для запуска веб-сервера. |
+| `PORT` | `8000` | Порт веб-сервера мастера. |
+| `TEMP_UPLOAD_DIR` | `smart_credit_uploads` | Каталог для временного сохранения входящих файлов. |
 
 ---
 
-## Тестирование и контроль качества
+## 🧪 Запуск тестов
 
-Система покрыта **126 автоматическими тестами**:
+Набор включает **47 автоматизированных тестов**, покрывающих интроспекцию DDL, все адаптеры форматов, AI-маппер, защиту от Prompt Injection, проверку ограничений схемы, сервисную ролевую модель и REST API:
 
-```bash
-# Запуск полного набора тестов
-pytest -v
-
-# Тесты контрактов и валидации 18D вектора
-pytest tests/test_contracts.py -v
-
-# Тесты многодокументной загрузки и целостности связей (FK)
-pytest tests/test_pipeline_multidoc.py -v
-
-# Тесты парсеров CSV/XLSX с мультиязычными заголовками
-pytest tests/test_parsers_deep.py -v
-
-# Тесты модульных исполнителей LLM (Ollama SDK, HTTP, OpenAI, Fallback)
-pytest tests/test_llm_modular_executors.py -v
-
-# Тест живого сервера Ollama
-pytest tests/test_ollama_server.py -v
-
-# Проверка линтером Ruff
-ruff check src/ tests/
+```powershell
+pytest tests/ -v
 ```
 
 ---
 
-## Лицензия
+## 🌐 Запуск веб-интерфейса мастера
 
-MIT License. См. [LICENSE](LICENSE).
+Веб-мастер предоставляет пошаговый процесс загрузки данных клиентом:
+
+```powershell
+python run_server.py
+```
+
+После запуска перейдите в браузере по адресам:
+- **Веб-интерфейс мастера (4 шага):** [http://127.0.0.1:8000](http://127.0.0.1:8000)
+- **Интерактивная документация REST API (Swagger):** [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+### Шаги мастера:
+1. **Шаг 1: Загрузка (Upload):** Drag-and-drop файлов любого формата, интроспекция структуры, проверка Fast-Path.
+2. **Шаг 2: Семантическое сопоставление (Mapping):** Интерактивная таблица с цветовыми бейджами уверенности ИИ, дропдауны колонок схемы, защита от коллизий (нельзя назначить два разных поля файла на одно поле БД) и возможность игнорировать лишние колонки.
+3. **Шаг 3: Предварительная проверка (Dry-Run):** Детерминированная проверка ограничений PostgreSQL 16 (CHECK, UNIQUE, NOT NULL, ENUM) без изменения БД, таблица предпросмотра нормализованных строк.
+4. **Шаг 4: Фиксация (Commit):** Атомарная транзакция, доступная строго ролям `UNDERWRITER` и `ADMIN`. Скачивание отчетов аудита в `.md` и `.json`.
+
+---
+
+## 💻 Программное использование (API сервиса)
+
+Хост-приложение взаимодействует с парсером через фасад [`ParserModuleService`](smart_credit_parser/app_interface.py):
+
+```python
+from pathlib import Path
+from smart_credit_parser.app_interface import ParserModuleService
+
+# Инициализация сервиса
+service = ParserModuleService(schema_path="schema.sql")
+
+# 1. Загрузка и первичный анализ файла
+file_bytes = Path("client_invoices.xlsx").read_bytes()
+inspection = service.upload_and_inspect(
+    file_bytes=file_bytes,
+    filename="client_invoices.xlsx",
+    user_id="analyst_1",
+    user_role="ANALYST",
+)
+print(f"Определена таблица: {inspection.suggested_table}")
+
+# 2. Получение или ручная корректировка сопоставления
+mapping = service.get_mapping(inspection.session_id)
+
+# 3. Запуск предпросмотра (Dry-Run)
+dry_run = service.run_dry_run(inspection.session_id)
+print(f"Принято: {dry_run.rows_accepted}, Отклонено: {dry_run.rows_rejected}")
+
+# 4. Фиксация в БД (требует роль UNDERWRITER или ADMIN)
+commit_res = service.confirm_and_write(
+    session_id=inspection.session_id,
+    user_id="underwriter_1",
+    user_role="UNDERWRITER",
+)
+print(f"Записано {commit_res.inserted_count} строк в {commit_res.target_table}")
+```
+
+---
+
+## 🖥 Консольный пример (CLI)
+
+Для быстрой проверки разбора файлов в командной строке:
+
+```powershell
+# Запуск демонстрации всех ключевых сценариев:
+python examples/demo.py
+
+# Разбор произвольного файла клиента:
+python examples/demo.py "samples/client_test_invoices.xlsx"
+```
+
+---
+
+## 🔒 Ролевая модель доступа (RBAC)
+
+Роли соответствуют `schema.sql`:
+
+| Роль | Шаг 1 (Upload) | Шаг 2 (Mapping) | Шаг 3 (Dry-Run) | Шаг 4 (Commit to DB) |
+|---|:---:|:---:|:---:|:---:|
+| **ANALYST** | ✅ Разрешено | ✅ Разрешено | ✅ Разрешено | ❌ Заблокировано |
+| **UNDERWRITER** | ✅ Разрешено | ✅ Разрешено | ✅ Разрешено | ✅ Разрешено |
+| **ADMIN** | ✅ Разрешено | ✅ Разрешено | ✅ Разрешено | ✅ Разрешено |
+
+Попытка вызова `confirm_and_write()` пользователем с ролью `ANALYST` немедленно завершается исключением `PermissionError` и блокируется на уровне веб-интерфейса.
+
+---
+
+## 🔌 Как добавить новый формат данных
+
+Все адаптеры наследуются от базового класса `BaseExtractor`:
+
+1. Создайте файл `smart_credit_parser/extractors/my_format_extractor.py`:
+   ```python
+   from pathlib import Path
+   from typing import Any, Dict, Iterator, List, Tuple
+   from .base import BaseExtractor
+
+   class MyFormatExtractor(BaseExtractor):
+       def can_handle(self, file_path: Path) -> bool:
+           return file_path.suffix.lower() in (".myext",)
+
+       def get_sample(self, file_path: Path, max_rows: int = 10) -> Tuple[List[str], List[Dict[str, Any]]]:
+           # Извлечение заголовков и первых max_rows строк
+           ...
+
+       def extract_chunks(self, file_path: Path, chunk_size: int = 1000) -> Iterator[List[Dict[str, Any]]]:
+           # Потоковая генерация пакетов строк для масштабируемости
+           ...
+   ```
+2. Зарегистрируйте экстрактор в [`smart_credit_parser/extractors/registry.py`](smart_credit_parser/extractors/registry.py):
+   ```python
+   from .my_format_extractor import MyFormatExtractor
+   EXTRACTORS.append(MyFormatExtractor())
+   ```
+Новый формат станет автоматически доступен во всех компонентах системы и веб-мастере.
+
+---
+
+## 🔄 Что делать при изменении `schema.sql`
+
+Благодаря динамической интроспекции DDL (`SQLSchemaParser`):
+1. **Никакой код парсера переписывать не нужно.**
+2. Достаточно обновить файл `schema.sql` в корне проекта (или указать новый путь через переменную `SCHEMA_PATH`).
+3. При следующем запуске парсер автоматически:
+   - Перестроит граф всех 13 таблиц;
+   - Обновит типы колонок, допустимые списки ENUM-значений и числовые CHECK-диапазоны;
+   - Перестроит граф внешних ключей и топологический порядок зависимостей таблиц.
