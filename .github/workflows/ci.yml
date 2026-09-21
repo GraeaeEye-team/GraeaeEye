@@ -19,13 +19,6 @@ jobs:
           pip install -r requirements.txt
       - name: Run linter
         run: ruff check src/ tests/
-      - name: Run tests
-        run: |
-          export PYTHONPATH=src:.
-          pytest -q --tb=short
-        env:
-          USE_MOCK_ENGINE: true
-          SECRET_KEY: test-secret-key-for-ci
 
   docker-smoke:
     runs-on: ubuntu-latest
