@@ -610,14 +610,32 @@ function clear_report() {
 	const industry_code = document.getElementById("industry_code");
 	if (industry_code) industry_code.value = industry_code.placeholder;
 
-	const fileStatement = document.getElementById("file-statement");
-	if (fileStatement) fileStatement.value = "";
+	const name_statement = document.getElementById("name-statement");
+	if (name_statement) {
+		name_statement.innerHTML = "No file chosen";
+		verdictElem.className = "";
+	}
 
-	const fileInvoices = document.getElementById("file-invoices");
-	if (fileInvoices) fileInvoices.value = "";
+	const name_invoices = document.getElementById("name-invoices");
+	if (name_invoices) {
+		name_invoices.innerHTML = "No file chosen";
+		verdictElem.className = "";
+	}
 
-	const fileCredits = document.getElementById("file-credits");
-	if (fileCredits) fileCredits.value = "";
+	const name_credits = document.getElementById("name-credits");
+	if (name_credits) {
+		name_credits.innerHTML = "No file chosen";
+		verdictElem.className = "";
+	}
+
+	const file_statement = document.getElementById("file-statement");
+	if (file_statement) file_statement.value = "";
+
+	const file_invoices = document.getElementById("file-invoices");
+	if (file_invoices) file_invoices.value = "";
+
+	const file_credits = document.getElementById("file-credits");
+	if (file_credits) file_credits.value = "";
 
 	const reportSection = document.getElementById("report-section");
 	if (reportSection) reportSection.style.display = "none";
