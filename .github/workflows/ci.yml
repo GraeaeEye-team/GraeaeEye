@@ -26,7 +26,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build and start containers
-        run: docker compose up -d --build
+        run: |
+          cp .env.example .env
+          docker compose up -d --build
       - name: Wait for backend health
         run: |
           for i in {1..30}; do
