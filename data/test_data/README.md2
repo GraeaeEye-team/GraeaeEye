@@ -1,0 +1,102 @@
+# Smart Credit: Better Financing Decisions for SMEs
+## SME Banking & Credit Risk Challenge Data Pack
+**DeepTech GigaHack 2026**
+
+Welcome to the **Smart Credit** Challenge dataset, provided in collaboration with the FinTech track organizers and banking partners.
+
+---
+
+## 1. Context & Business Overview
+
+Small and Medium Enterprises (SMEs) are the primary growth engine of the Republic of Moldova. However, assessing credit risk for small businesses is challenging due to the limitations of static annual financial statements. Modern credit underwriting platforms address this challenge by synthesizing multiple operational data streams:
+
+- Financial condition and annual balance sheet structure;
+- Operating bank accounts and daily transaction cash flow;
+- B2B invoice discipline, customer delays, and supplier settlements;
+- Existing credit lines, equipment leasing, and outstanding liabilities;
+- Pre-existing credit facilities and historical installment repayment behavior;
+- Terms, purpose, and collateral offered for new financing requests.
+
+### Challenge Objective
+Develop an automated credit underwriting and risk rating solution for SME loan applications. Using information available at the time of each financing application, your solution should:
+1. Predict repayment risk and performance categories (such as probability of default or severe delinquency) for incoming SME credit requests.
+2. Provide transparent, explainable recommendations for loan underwriters.
+3. Identify applications with high uncertainty that require deeper manual review by a human credit analyst.
+
+---
+
+## 2. Dataset Structure & Key Relationships
+
+The dataset contains **9 relational CSV files** covering operational SME banking in Moldova:
+
+```
+                          +---------------+
+                          |  businesses   |
+                          +-------+-------+
+                                  |
+     +------------+---------------+---------------+---------------+
+     |            |                               |               |
++----+-----+ +----+----+                     +----+------+  +-----+------+
+| accounts | |invoices |                     |obligations|  |applications|
++----+-----+ +---------+                     +-----------+  +-----+------+
+     |                                                            |
++----+--------+                                             +-----+------+
+|transactions |                                             | historical |
++-------------+                              +-------+      | application|
+                                             | loans |      |  outcomes  |
+                                             +---+---+      +------------+
+                                                 |
+                                          +------+-----------+
+                                          |repayment_history |
+                                          +------------------+
+```
+
+### Table Summary:
+| Table Name | Description | Key Identifier |
+| :--- | :--- | :--- |
+| `businesses.csv` | Enterprise demographics, sector, workforce, annual balance sheet and income statement metrics. | `business_id` (Primary Key) |
+| `accounts.csv` | Commercial bank accounts held by the enterprise, currency, opening balance, and overdraft limits. | `account_id` (Primary Key) |
+| `transactions.csv` | Daily bank account ledger transactions (credits, debits, categories, running balance). | `transaction_id` (Primary Key) |
+| `invoices.csv` | Commercial B2B receivables and payables, payment terms, delays, and settlement statuses. | `invoice_id` (Primary Key) |
+| `obligations.csv` | Pre-existing debt facilities, leasing contracts, and trade obligations. | `obligation_id` (Primary Key) |
+| `applications.csv` | Financing applications submitted by enterprises (`2024-01-01` to `2025-12-31`). | `application_id` (Primary Key) |
+| `loans.csv` | Prior credit facilities originated before new applications (historical credit bureau track). | `loan_id` (Primary Key) |
+| `repayment_history.csv` | Monthly installment payment records for pre-existing loans in `loans.csv`. | `repayment_id` (Primary Key) |
+| `historical_application_outcomes.csv` | 12-month post-approval repayment outcomes observed for completed historical applications in `applications.csv`. | `application_id` (Primary Key / FK) |
+
+---
+
+## 3. Repayment Outcomes Reference
+
+The file `historical_application_outcomes.csv` records the observed repayment behavior over the 12-month period following loan approval for completed applications:
+- **`outcome_status_12m`**: Multi-class repayment status observed over 12 months:
+  - `performing`: Loan serviced on schedule or with minor grace-period delays (Days Past Due $\le 30$).
+  - `late`: Delinquency between 31 and 89 Days Past Due, cured without contract restructuring.
+  - `restructured`: Financial distress requiring debt renegotiation or term extension.
+  - `default`: Severe credit default (90+ Days Past Due / charged-off).
+- **`max_dpd_12m`**: Peak Days Past Due (DPD) incurred over the 12-month post-decision window.
+
+Participants are free to formulate their own modeling targets (e.g. binary default prediction, multi-class risk scoring, or expected loss modeling) as best suited for underwriting decisions.
+
+---
+
+## 4. Important Notes on Working with the Data
+
+### Application-Time Evaluation (Point-in-Time Discipline)
+In commercial lending, decisions must be made using only the information that would have been available at the moment the enterprise applied for financing. When extracting features and evaluating historical cases:
+> **Make sure to use only historical records and events that occurred on or before the application date (`event_date <= application_date`).**
+
+### Data Units & Currency
+- Monetary amounts are quoted in **Moldovan Lei (MDL)** unless a specific currency (`MDL`, `EUR`, `USD`) is stated.
+- Interest rates are stated in **nominal percentage per annum (% p.a.)**.
+- Durations and terms are quoted in **months** or **calendar days** as indicated.
+
+### Data Privacy & Anonymization
+All company names, tax identifiers, account numbers, and counterparties in this dataset are anonymized and synthetic. Any resemblance to real commercial entities is purely coincidental. The data has been statistically calibrated to reflect realistic economic distributions of the Moldovan business environment.
+
+---
+
+## 5. Complete Data Dictionary
+
+For complete definitions, data types, nullability, and field-level descriptions, please refer to the accompanying Excel workbook:
+**`data_dictionary.xlsx`**

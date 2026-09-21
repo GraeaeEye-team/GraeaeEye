@@ -32,6 +32,8 @@ services:
     restart: always
     ports:
       - "8000:8000"
+    env_file:
+      - .env
     environment:
       - APP_ENV=development
       - POSTGRES_SERVER=postgres
@@ -40,7 +42,10 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-graeae_eye_db}
       - PYTHONPATH=/app/src
-      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_HOST=${OLLAMA_HOST:-}
+      - LLM_MODEL=${LLM_MODEL:-llama3.2:1b}
+      - LLM_PROVIDER=${LLM_PROVIDER:-auto}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
@@ -51,11 +56,6 @@ services:
         condition: service_healthy
     networks:
       - internal_net
-#    develop:
-#      watch:
-#        - action: sync
-#          path: src/fintech_app
-#          target: /app
 
   db-backup:
     build:
