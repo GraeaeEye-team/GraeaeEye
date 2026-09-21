@@ -549,17 +549,23 @@ body {
     .brand-subtitle {
         display: none;
     }
-    .auth-forms-container, .run-meta-panel {
+    .auth-forms-container,
+    .run-meta-panel {
         display: grid;
     }
-    .form-grid, .drop-zones-grid, .submodules-status-grid {
+    .form-grid,
+    .drop-zones-grid,
+    .submodules-status-grid,
+    .cards-grid {
         display: block;
     }
-    .submodule-badge, .sm-code {
+    .submodule-badge,
+    .sm-code {
         display: inline !important;
     }
-    .drop-zone {
-        margin-bottom: 1.5em;
+    .drop-zone,
+    .submodule-report-card {
+        margin-bottom: 0.5em;
     }
     .auth-forms-container label,
     .auth-forms-container input {
