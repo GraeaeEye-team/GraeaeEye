@@ -294,6 +294,7 @@ class BankAccountRecord:
     current_balance: Decimal
     account_id: UUID = field(default_factory=uuid4)
     overdraft_limit: Decimal = Decimal("0.00")
+    account_number: str = "OP-MAIN"
 
 
 @dataclass

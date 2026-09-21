@@ -18,12 +18,8 @@ import tempfile
 from typing import Any, List, Optional, Tuple
 from uuid import UUID
 
-try:
-    from src.fintech_app.ingestion.pipeline import IngestionPipeline
-    from src.fintech_app.ml.pipeline import UnderwritingAnalyticalPipeline
-except ModuleNotFoundError:
-    from fintech_app.ingestion.pipeline import IngestionPipeline
-    from fintech_app.ml.pipeline import UnderwritingAnalyticalPipeline
+from ..ingestion.pipeline import IngestionPipeline
+from ..ml.pipeline import UnderwritingAnalyticalPipeline
 
 logger = logging.getLogger("fintech_app.api.orchestration")
 

@@ -5,23 +5,27 @@ builds the standardized 18-element feature vector, and compiles the diagnostic r
 Provides asynchronous database-backed evaluation via CompanyDataLoader.
 """
 
+import asyncio
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
 import logging
 import math
-from typing import Any, Optional
+import time
+from typing import Any, Optional, Union
 from uuid import UUID
 
+from ..core.config import settings
 from ..db.connection import Database
 from .base import EvaluationStatus, SubmoduleResult
+from .llm_client import LLMExecutor
 from .loader import CompanyDataLoader
 from .scoring import CreditScoringEngine, CreditScoringResult
 from .submodule_ownership import OwnershipStructureEvaluator
 from .submodule_reputation import WebReputationEvaluator
 from .submodule_macro import MacroSectorRiskEvaluator
 from .submodule_client_dep import ClientDependencyEvaluator
-from submodule_supplier_dep import SupplierDependencyEvaluator
+from .submodule_supplier_dep import SupplierDependencyEvaluator
 from .submodule_cash_readiness import ImmediateCashReadinessEvaluator
 from .submodule_cash_stability import CashflowStabilityEvaluator
 from .submodule_receivables import ReceivablesQualityEvaluator
@@ -40,6 +44,16 @@ class UnderwritingPipelineResult:
     submodule_results: dict[str, SubmoduleResult]
     compiled_dossier_text: str
     scoring_result: Optional[CreditScoringResult] = None
+
+    @property
+    def feature_vector_18d(self) -> list[float | None]:
+        return self.feature_vector
+
+    @property
+    def universal_score(self) -> float:
+        if self.scoring_result is not None:
+            return float(self.scoring_result.investment_attractiveness_score)
+        return 0.0
 
 
 class UnderwritingAnalyticalPipeline:
@@ -128,9 +142,21 @@ class UnderwritingAnalyticalPipeline:
 
         results: dict[str, SubmoduleResult] = {}
 
+        normalized_active = None
+        if active_submodules is not None:
+            normalized_active = set()
+            for sm_code in active_submodules:
+                sm_clean = str(sm_code).strip().upper()
+                if sm_clean in ("CR", "ICR"):
+                    normalized_active.add("ICR")
+                elif sm_clean in ("DL", "ICDL"):
+                    normalized_active.add("ICDL")
+                else:
+                    normalized_active.add(sm_clean)
+
         for sm in self.submodules:
             code = sm.submodule_code
-            if active_submodules is not None and code not in active_submodules:
+            if normalized_active is not None and code not in normalized_active:
                 empty_indices = dict(self.SUBMODULE_EMPTY_INDICES.get(code, {}))
                 results[code] = SubmoduleResult(
                     submodule_code=code,
@@ -211,21 +237,33 @@ class UnderwritingAnalyticalPipeline:
         ]
         compiled_dossier_text = "\n\n".join(dossier_sections)
 
+        scoring_engine = CreditScoringEngine()
+        scoring_result = scoring_engine.calculate_score(
+            feature_vector=feature_vector,
+            compiled_dossier_text=compiled_dossier_text,
+        )
+
         return UnderwritingPipelineResult(
             business_id=business_id,
             as_of_date=cutoff_date,
             feature_vector=feature_vector,
             submodule_results=results,
             compiled_dossier_text=compiled_dossier_text,
+            scoring_result=scoring_result,
         )
 
     async def run_analysis_from_db(
         self,
         db: Database,
-        business_id: UUID,
+        business_id: Optional[UUID] = None,
         as_of_date: Optional[date] = None,
         run_id: Optional[UUID] = None,
         active_submodules: Optional[list[str]] = None,
+        tax_id: Optional[str] = None,
+        executor: Optional[Union[str, LLMExecutor]] = None,
+        timeout: Optional[float] = None,
+        heartbeat_interval: Optional[float] = None,
+        **kwargs: Any,
     ) -> UnderwritingPipelineResult:
         """
         Asynchronously loads the complete financial graph for the company from PostgreSQL,
@@ -238,8 +276,28 @@ class UnderwritingAnalyticalPipeline:
         :param run_id: Optional analysis run UUID for real-time telemetry logging.
         :param active_submodules: Optional list of submodule codes to execute. If provided,
                                   omitted submodules are marked SKIPPED/DATA_ABSENT.
+        :param tax_id: Optional tax identifier to resolve business_id if omitted.
+        :param executor: Optional custom LLMExecutor callable or registered executor key.
+        :param timeout: Optional override for LLM inference timeout in seconds (defaults to settings.llm_inference_timeout).
+        :param heartbeat_interval: Optional interval in seconds for LLM heartbeat logs (defaults to settings.llm_heartbeat_interval).
         :return: UnderwritingPipelineResult containing feature vector and scoring result.
         """
+        if business_id is None and tax_id is not None:
+            biz_rep = await db.get_records_from_businesses(find_only_first=True, tax_id=str(tax_id))
+            if biz_rep.success and biz_rep.data:
+                rec = (
+                    biz_rep.data
+                    if isinstance(biz_rep.data, dict)
+                    else (biz_rep.data[0] if isinstance(biz_rep.data, list) and biz_rep.data else None)
+                )
+                if rec and "business_id" in rec:
+                    business_id = (
+                        rec["business_id"] if isinstance(rec["business_id"], UUID) else UUID(str(rec["business_id"]))
+                    )
+
+        if business_id is None:
+            raise ValueError("business_id or valid tax_id must be provided to run_analysis_from_db.")
+
         effective_date = as_of_date or date.today()
         is_run_registered = False
 
@@ -327,6 +385,102 @@ class UnderwritingAnalyticalPipeline:
                     for res in pipeline_result.submodule_results.values()
                 ]
 
+                # Resolve LLM provider and timeout configuration
+                if executor is not None:
+                    provider_tag = (
+                        executor if isinstance(executor, str) else getattr(executor, "__name__", "custom_executor")
+                    )
+                else:
+                    provider_tag = getattr(settings, "llm_provider", "auto")
+                model_tag = getattr(settings, "llm_model", "gpt-4o-mini")
+                effective_timeout = (
+                    timeout if timeout is not None else getattr(settings, "llm_inference_timeout", 300.0)
+                )
+                hb_interval = (
+                    heartbeat_interval
+                    if heartbeat_interval is not None
+                    else getattr(settings, "llm_heartbeat_interval", 10.0)
+                )
+
+                await db.add_record_to_analysis_logs(
+                    run_id=run_id,
+                    severity="INFO",
+                    stage="LLM_SYNTHESIS",
+                    message=f"[LLM_START] Запуск генерации меморандума через {provider_tag}:{model_tag}. Ожидание ответа...",
+                )
+
+                # Fault-tolerant background heartbeat worker
+                start_llm_time = time.perf_counter()
+
+                async def _heartbeat_worker():
+                    elapsed = 0.0
+                    while True:
+                        await asyncio.sleep(hb_interval)
+                        elapsed += hb_interval
+                        try:
+                            await db.add_record_to_analysis_logs(
+                                run_id=run_id,
+                                severity="INFO",
+                                stage="LLM_SYNTHESIS",
+                                message=(
+                                    f"[LLM_HEARTBEAT] Локальная нейросеть обрабатывает финансовое досье "
+                                    f"(прошло {int(elapsed)}с / лимит {int(effective_timeout)}с)..."
+                                ),
+                            )
+                        except asyncio.CancelledError:
+                            raise
+                        except Exception as log_exc:
+                            logger.debug("Heartbeat log write suppressed: %s", log_exc)
+
+                heartbeat_task = asyncio.create_task(_heartbeat_worker())
+
+                llm_summary = scoring_result.executive_summary
+                synthesis_engine_tag = "fallback:template"
+                try:
+                    detailed_res = await scoring_engine.generate_detailed_llm_summary(
+                        scoring_result,
+                        executor=executor,
+                        timeout=effective_timeout,
+                    )
+                    llm_summary = detailed_res.text
+                    synthesis_engine_tag = detailed_res.synthesis_engine
+
+                    if detailed_res.fallback_used:
+                        await db.add_record_to_analysis_logs(
+                            run_id=run_id,
+                            severity="WARN",
+                            stage="LLM_SYNTHESIS",
+                            message=(
+                                f"LLM_FALLBACK_TRIGGERED: Neural inference unavailable "
+                                f"({detailed_res.error_details}). Switched to structured fallback memorandum."
+                            ),
+                        )
+                    else:
+                        total_sec = round(time.perf_counter() - start_llm_time, 2)
+                        char_count = len(llm_summary) if llm_summary else 0
+                        await db.add_record_to_analysis_logs(
+                            run_id=run_id,
+                            severity="INFO",
+                            stage="LLM_SYNTHESIS",
+                            message=f"[LLM_SUCCESS] Меморандум успешно сформирован за {total_sec}с ({char_count} символов).",
+                        )
+                except Exception as llm_exc:
+                    logger.warning("LLM synthesis encountered error (%s). Using fallback summary.", llm_exc)
+                    await db.add_record_to_analysis_logs(
+                        run_id=run_id,
+                        severity="WARN",
+                        stage="LLM_SYNTHESIS",
+                        message=f"LLM_FALLBACK_TRIGGERED: Exception during LLM dispatch: {llm_exc}.",
+                    )
+                finally:
+                    heartbeat_task.cancel()
+                    try:
+                        await heartbeat_task
+                    except asyncio.CancelledError:
+                        pass
+
+                raw_indices["_synthesis_engine"] = synthesis_engine_tag
+
                 # Update analysis_runs with complete dossier and metrics
                 score_dec = Decimal(str(round(scoring_result.investment_attractiveness_score, 2)))
                 await db.update_records_in_analysis_runs(
@@ -335,7 +489,7 @@ class UnderwritingAnalyticalPipeline:
                         "universal_score": score_dec,
                         "verdict_category": scoring_result.verdict_category,
                         "recommendation": scoring_result.recommendation,
-                        "llm_final_summary": scoring_result.executive_summary,
+                        "llm_final_summary": llm_summary,
                         "raw_indices_payload": raw_indices,
                         "submodules_reports": sub_reports,
                         "completed_at": datetime.now(timezone.utc),
@@ -389,13 +543,19 @@ def run_full_ml_analysis(snapshot: Any, as_of_date: date | None = None) -> Under
 
 
 async def run_analysis_from_db(
-    db: Database,
-    business_id: UUID,
+    db: Optional[Database] = None,
+    business_id: Optional[UUID] = None,
     as_of_date: Optional[date] = None,
     run_id: Optional[UUID] = None,
     active_submodules: Optional[list[str]] = None,
+    tax_id: Optional[str] = None,
+    **kwargs: Any,
 ) -> UnderwritingPipelineResult:
     """Convenience async helper to load data from database and execute full pipeline analysis."""
+    if db is None:
+        db = kwargs.get("db")
+    if db is None:
+        raise ValueError("db connection instance must be provided to run_analysis_from_db.")
     pipeline = UnderwritingAnalyticalPipeline()
     return await pipeline.run_analysis_from_db(
         db=db,
@@ -403,6 +563,8 @@ async def run_analysis_from_db(
         as_of_date=as_of_date,
         run_id=run_id,
         active_submodules=active_submodules,
+        tax_id=tax_id,
+        **kwargs,
     )
 
 

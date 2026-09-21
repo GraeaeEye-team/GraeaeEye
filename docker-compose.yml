@@ -40,6 +40,9 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-graeae_eye_db}
       - PYTHONPATH=/app/src
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - .:/app
       - /app/__pycache__
@@ -48,11 +51,11 @@ services:
         condition: service_healthy
     networks:
       - internal_net
-    develop:
-      watch:
-        - action: sync
-          path: src/fintech_app
-          target: /app
+#    develop:
+#      watch:
+#        - action: sync
+#          path: src/fintech_app
+#          target: /app
 
   db-backup:
     build:

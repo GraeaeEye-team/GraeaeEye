@@ -28,11 +28,19 @@ target-version = "py312"
 select = ["E", "F", "W"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "."]
 filterwarnings = [
+    "ignore:.*Please use `import python_multipart` instead.*:PendingDeprecationWarning",
+    "ignore:.*The anyio.abc.BlockingPortal alias is deprecated.*:DeprecationWarning",
+    "ignore:.*'crypt' is deprecated and slated for removal.*:DeprecationWarning",
+    "ignore:.*Accessing argon2.__version__ is deprecated.*:DeprecationWarning",
     "ignore::DeprecationWarning:passlib.*:",
+    "ignore::DeprecationWarning:crypt:",
+    "ignore::DeprecationWarning:anyio.*:",
     "ignore::DeprecationWarning:starlette.*:",
     "ignore::PendingDeprecationWarning:starlette.*:",
+    "ignore::PendingDeprecationWarning:multipart.*:",
+    "ignore::starlette.exceptions.StarletteDeprecationWarning:",
 ]
 
 

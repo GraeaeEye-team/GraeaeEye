@@ -99,6 +99,7 @@ CANONICAL_HEADER_SYNONYMS: Dict[str, List[str]] = {
     ],
     "counterparty_raw_name": [
         "counterparty_raw_name",
+        "counterparty_name",
         "counterparty",
         "beneficiar",
         "platitor",

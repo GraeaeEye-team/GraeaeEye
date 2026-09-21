@@ -220,7 +220,9 @@ def check_fastapi_routes() -> None:
     try:
         from fintech_app.main import app
 
-        routes = [r.path for r in app.routes]
+        openapi_paths = set(app.openapi().get("paths", {}).keys())
+        standard_paths = set(getattr(r, "path", None) for r in app.routes if getattr(r, "path", None))
+        all_paths = openapi_paths.union(standard_paths)
 
         required = [
             "/health",
@@ -231,7 +233,7 @@ def check_fastapi_routes() -> None:
             "/api/v1/analysis/report/{run_id}",
         ]
         for route in required:
-            if any(route == r or r.endswith(route) for r in routes):
+            if any(route == r or r.endswith(route) for r in all_paths):
                 log_ok(f"Маршрут зарегистрирован: {route}")
             else:
                 log_error(f"Критический маршрут отсутствует в FastAPI app: {route}")

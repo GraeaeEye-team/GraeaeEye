@@ -81,4 +81,3 @@ def generate_mock_transaction_batch(
     payload = generate_mock_bank_statement_payload(business_id=business_id, account_id=account_id, count=count)
     mapper = TransactionCategorizationMapper()
     return mapper.standardize_payload(payload)
-

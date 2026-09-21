@@ -286,6 +286,18 @@ async def register(
 
     logger.info("User successfully registered: '%s' (user_id: %s)", email_clean, new_user_id)
 
+    # Initialize default user settings for workspace preferences (Table 11: user_settings)
+    if hasattr(db, "add_record_to_user_settings"):
+        try:
+            await db.add_record_to_user_settings(
+                user_id=new_user_id,
+                ui_theme="system",
+                terminal_sound_effects=False,
+                auto_expand_reports=True,
+            )
+        except Exception as exc:
+            logger.warning("Could not initialize user_settings for %s: %s", new_user_id, exc)
+
     # Issue signed session JWT
     jwt_token = create_session_token({"sub": str(new_user_id), "email": email_clean, "role": role})
 

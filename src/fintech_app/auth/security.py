@@ -27,10 +27,7 @@ except Exception:
 
     _has_argon2 = False
 
-try:
-    from fintech_app.core.config import settings
-except ModuleNotFoundError:
-    from src.fintech_app.core.config import settings
+from ..core.config import settings
 
 logger = logging.getLogger("fintech_app.auth.security")
 

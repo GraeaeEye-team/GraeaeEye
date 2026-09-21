@@ -1,70 +1,250 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<title>GraeaeEye</title>
+	<title>GraeaeEye | Smart Credit & Cash Flow Risk Engine</title>
 	<meta charset="UTF-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
 	<link rel="stylesheet" href="/static/styles.css">
-	<script src="/static/scripts.js"></script>
 	<link rel="shortcut icon" href="/static/favicon.ico" type="image/x-icon">
 </head>
 <body>
-	<h1 class="splash">GraeaeEye SPA</h1>
-	<div id="main">
+	<header class="app-header">
+		<div class="brand">
+			<span class="brand-logo">👁️</span>
+			<span class="brand-title">GraeaeEye <small class="brand-subtitle">Smart Credit Underwriting Engine</small></span>
+		</div>
+		<div class="header-actions">
+			<span id="system-status" class="badge badge-info">Checking status...</span>
+			<button id="theming" class="icon-btn" onclick="upd_theme()" title="Toggle Theme">🌗</button>
+		</div>
+	</header>
 
-		<nav id="cfg-panel">
-			<button id="theming" class="iconic" onclick="upd_theme()">Th</button>
-		</nav>
-
-		<div id="auth">
+	<main id="main-container">
+		<!-- AUTHENTICATION CARD -->
+		<section id="auth-section" class="card">
 			<div id="auth-guest">
-				<p>Вы не вошли в систему</p>
+				<h2>System Access & Authentication</h2>
+				<p class="section-desc">Sign in with underwriter credentials or register a new analyst workspace.</p>
 
-				<details id="details-signin">
-					<summary>Sign in</summary>
-					<form id="login-form">
-						<div>
-							<label for="login-email">Email:</label>
-							<input type="email" id="login-email" required placeholder="analyst@graeae.eye">
-						</div>
-						<div>
-							<label for="login-password">Password:</label>
-							<input type="password" id="login-password" required placeholder="••••••••">
-						</div>
-						<button type="submit">Sign in</button>
-						<div id="login-error" class="error"></div>
-					</form>
-				</details>
+				<div class="auth-forms-container">
+					<div class="auth-column">
+						<h3>Sign In</h3>
+						<form id="login-form">
+							<div class="form-group">
+								<label for="login-email">Corporate Email</label>
+								<input type="email" id="login-email" required placeholder="analyst@graeae.eye" value="analyst@graeae.eye">
+							</div>
+							<div class="form-group">
+								<label for="login-password">Password</label>
+								<input type="password" id="login-password" required placeholder="••••••••" value="correct-horse-battery-staple">
+							</div>
+							<button type="submit" class="btn btn-primary">Sign In to Dashboard</button>
+							<div id="login-error" class="error-msg"></div>
+						</form>
+					</div>
 
-				<details id="details-register">
-					<summary>Register</summary>
-					<form id="register-form">
-						<div>
-							<label for="register-name">Full Name:</label>
-							<input type="text" id="register-name" required placeholder="Alexander Hamilton">
-						</div>
-						<div>
-							<label for="register-email">Email:</label>
-							<input type="email" id="register-email" required placeholder="analyst@graeae.eye">
-						</div>
-						<div>
-							<label for="register-password">Password:</label>
-							<input type="password" id="register-password" required placeholder="••••••••">
-						</div>
-						<button type="submit">Register</button>
-						<div id="register-error" class="error"></div>
-					</form>
-				</details>
+					<div class="auth-divider">OR</div>
+
+					<div class="auth-column">
+						<h3>Register New Analyst</h3>
+						<form id="register-form">
+							<div class="form-group">
+								<label for="register-name">Full Name</label>
+								<input type="text" id="register-name" required placeholder="Alexander Hamilton">
+							</div>
+							<div class="form-group">
+								<label for="register-email">Corporate Email</label>
+								<input type="email" id="register-email" required placeholder="new.analyst@graeae.eye">
+							</div>
+							<div class="form-group">
+								<label for="register-password">Password (min 8 chars)</label>
+								<input type="password" id="register-password" required placeholder="••••••••">
+							</div>
+							<button type="submit" class="btn btn-secondary">Create Account</button>
+							<div id="register-error" class="error-msg"></div>
+						</form>
+					</div>
+				</div>
 			</div>
 
 			<div id="auth-logged-in" style="display: none;">
-				<p>Вы вошли как: <b id="user-name"></b> (<span id="user-role"></span>)</p>
-				<p>Email: <span id="user-email"></span></p>
-				<form id="logout-form">
-					<button type="submit">Quit</button>
-				</form>
+				<div class="user-profile-bar">
+					<div class="user-meta">
+						<span class="user-avatar">👤</span>
+						<div>
+							<strong><span id="user-name"></span></strong>
+							<span class="badge badge-role" id="user-role"></span>
+							<div class="user-email-text"><span id="user-email"></span></div>
+						</div>
+					</div>
+					<form id="logout-form">
+						<button type="submit" class="btn btn-outline">Sign Out</button>
+					</form>
+				</div>
 			</div>
+		</section>
+
+		<!-- WORKSPACE: VISIBLE WHEN LOGGED IN -->
+		<div id="workspace" style="display: none;">
+			<!-- SECTION 1: INGESTION GATEWAY & WIZARD -->
+			<section id="wizard-section" class="card">
+				<h2>1. Enterprise Underwriting & Multi-Document Ingestion</h2>
+				<p class="section-desc">Declare SME corporate identifiers and upload financial documents for automated risk evaluation.</p>
+
+				<form id="analysis-form">
+					<div class="form-grid">
+						<div class="form-group">
+							<label for="company_name">Company Legal Name *</label>
+							<input type="text" id="company_name" name="input_company_name" required placeholder="Universal Agro Trade SRL" value="Universal Agro Trade SRL">
+						</div>
+						<div class="form-group">
+							<label for="tax_id">National Tax ID (IDNO) *</label>
+							<input type="text" id="tax_id" name="input_tax_id" required placeholder="1003600099881" value="1003600099881">
+						</div>
+						<div class="form-group">
+							<label for="industry_code">Industry Classification (NACE/CAEM) *</label>
+							<input type="text" id="industry_code" name="input_industry_code" required placeholder="G46" value="G46">
+						</div>
+					</div>
+
+					<div class="drop-zones-grid">
+						<!-- Dropzone A: Bank Statement -->
+						<div class="drop-zone" id="dz-statement">
+							<div class="dz-header">
+								<span class="dz-icon">📄</span>
+								<h4>Bank Statement Ledger</h4>
+								<span class="dz-badge req">Required</span>
+							</div>
+							<p class="dz-hint">CSV / XLSX format with dates, inflows, outflows, and closing balances.</p>
+							<input type="file" id="file-statement" name="bank_statement_file" accept=".csv,.xlsx">
+							<div class="file-name-display" id="name-statement">No file chosen</div>
+						</div>
+
+						<!-- Dropzone B: Invoices -->
+						<div class="drop-zone" id="dz-invoices">
+							<div class="dz-header">
+								<span class="dz-icon">📑</span>
+								<h4>Commercial Invoices</h4>
+								<span class="dz-badge opt">Optional</span>
+							</div>
+							<p class="dz-hint">Receivables & Payables (issue/due dates, counterparties, settlement status).</p>
+							<input type="file" id="file-invoices" name="invoices_file" accept=".csv,.xlsx">
+							<div class="file-name-display" id="name-invoices">No file chosen</div>
+						</div>
+
+						<!-- Dropzone C: Credit Obligations -->
+						<div class="drop-zone" id="dz-credits">
+							<div class="dz-header">
+								<span class="dz-icon">🏦</span>
+								<h4>Credit Obligations</h4>
+								<span class="dz-badge opt">Optional</span>
+							</div>
+							<p class="dz-hint">Existing credit lines, principal debt, monthly debt service, delinquency count.</p>
+							<input type="file" id="file-credits" name="credit_obligations_file" accept=".csv,.xlsx">
+							<div class="file-name-display" id="name-credits">No file chosen</div>
+						</div>
+					</div>
+
+					<div class="form-footer">
+						<button type="submit" id="btn-start-analysis" class="btn btn-primary btn-lg">
+							🚀 Start Multi-Document Risk Analysis
+						</button>
+						<div id="wizard-error" class="error-msg"></div>
+					</div>
+				</form>
+			</section>
+
+			<!-- SECTION 2: LIVE EXECUTION CONSOLE & SSE TELEMETRY -->
+			<section id="telemetry-section" class="card" style="display: none;">
+				<div class="section-header-flex">
+					<h2>2. Live Execution Console & Telemetry Stream</h2>
+					<span class="badge" id="run-status-badge">PROCESSING</span>
+				</div>
+				<p class="section-desc">Real-time SSE event stream from PostgreSQL <code>analysis_logs</code>.</p>
+
+				<div class="run-meta-panel">
+					<span><strong>Run ID:</strong> <code id="display-run-id"></code></span>
+					<span><strong>Target Entity:</strong> <span id="display-entity"></span></span>
+					<span><strong>Tax ID:</strong> <span id="display-tax-id"></span></span>
+				</div>
+
+				<!-- Progress bar -->
+				<div class="progress-bar-container">
+					<div class="progress-bar-fill" id="pipeline-progress-bar" style="width: 5%;">5%</div>
+				</div>
+				<div class="pipeline-stages-tracker" id="stages-tracker">
+					<span class="stage-tag active" id="st-queued">1. Queued</span>
+					<span class="stage-tag" id="st-ingestion">2. Ingestion</span>
+					<span class="stage-tag" id="st-dataload">3. Data Graph</span>
+					<span class="stage-tag" id="st-mleval">4. Submodules (9D)</span>
+					<span class="stage-tag" id="st-scoring">5. Scoring & LLM</span>
+					<span class="stage-tag" id="st-complete">6. Complete</span>
+				</div>
+
+				<!-- 9 Submodules Status Badges -->
+				<div class="submodules-status-grid" id="submodules-status-grid">
+					<div class="submodule-badge" id="badge-OS"><span class="sm-code">OS</span> <span class="sm-state">PENDING</span></div>
+					<div class="submodule-badge" id="badge-WPR"><span class="sm-code">WPR</span> <span class="sm-state">PENDING</span></div>
+					<div class="submodule-badge" id="badge-MSR"><span class="sm-code">MSR</span> <span class="sm-state">PENDING</span></div>
+					<div class="submodule-badge" id="badge-CD"><span class="sm-code">CD</span> <span class="sm-state">PENDING</span></div>
+					<div class="submodule-badge" id="badge-SD"><span class="sm-code">SD</span> <span class="sm-state">PENDING</span></div>
+					<div class="submodule-badge" id="badge-ICR"><span class="sm-code">ICR</span> <span class="sm-state">PENDING</span></div>
+					<div class="submodule-badge" id="badge-CFS"><span class="sm-code">CFS</span> <span class="sm-state">PENDING</span></div>
+					<div class="submodule-badge" id="badge-RQ"><span class="sm-code">RQ</span> <span class="sm-state">PENDING</span></div>
+					<div class="submodule-badge" id="badge-ICDL"><span class="sm-code">ICDL</span> <span class="sm-state">PENDING</span></div>
+				</div>
+
+				<!-- Terminal Log Window -->
+				<div class="terminal-container">
+					<div class="terminal-header">
+						<span>Console Output (EventSource: /api/v1/analysis/stream)</span>
+						<button class="btn btn-sm btn-outline" onclick="clear_terminal()">Clear</button>
+					</div>
+					<pre id="terminal-logs" class="terminal-body"></pre>
+				</div>
+			</section>
+
+			<!-- SECTION 3: FINAL UNDERWRITING DOSSIER -->
+			<section id="report-section" class="card" style="display: none;">
+				<h2>3. Credit Committee Underwriting Dossier & Diagnostics</h2>
+				<p class="section-desc">Comprehensive quantitative evaluation, 9-submodule diagnostic breakdown, and generative Underwriting Memorandum.</p>
+
+				<!-- Executive Score Banner -->
+				<div class="score-banner">
+					<div class="score-gauge-card">
+						<div class="score-gauge-val" id="report-score">--</div>
+						<div class="score-gauge-label">Investment Attractiveness Score (0-100)</div>
+					</div>
+					<div class="verdict-card">
+						<div><strong>Risk Category:</strong> <span id="report-verdict-badge" class="badge">--</span></div>
+						<div><strong>Underwriting Verdict:</strong> <span id="report-rec-badge" class="badge">--</span></div>
+						<div><strong>Probability of Default (PD):</strong> <strong id="report-pd">--%</strong></div>
+					</div>
+				</div>
+
+				<!-- Radar / Pillar Breakdown -->
+				<div class="chart-container">
+					<h3>9 Submodules Risk Factor Attributions</h3>
+					<div id="radar-chart-wrapper" class="radar-wrapper">
+						<svg id="submodule-radar-svg" viewBox="0 0 500 300" width="100%" height="240"></svg>
+					</div>
+				</div>
+
+				<!-- LLM Synthesis / Executive Summary Card -->
+				<div class="memo-card">
+					<h3>Generative Underwriting Memorandum (LLM Synthesis)</h3>
+					<div id="report-memo" class="memo-content">Awaiting analysis completion...</div>
+				</div>
+
+				<!-- Granular Submodules Breakdown Cards -->
+				<div class="submodules-cards-container">
+					<h3>Granular Submodule Diagnostic Cards</h3>
+					<div id="submodules-reports-list" class="cards-grid"></div>
+				</div>
+			</section>
 		</div>
-	</div>
+	</main>
+
+	<script src="/static/scripts.js"></script>
 </body>
 </html>

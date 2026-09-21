@@ -106,6 +106,7 @@ CREATE INDEX IF NOT EXISTS idx_invoices_counterparty ON invoices(counterparty_id
 CREATE TABLE IF NOT EXISTS bank_accounts (
     account_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     business_id UUID NOT NULL REFERENCES businesses(business_id) ON DELETE CASCADE,
+    account_number VARCHAR(64) NOT NULL DEFAULT 'OP-MAIN',
     currency VARCHAR(3) NOT NULL DEFAULT 'MDL',
     current_balance DECIMAL(18,2) NOT NULL,
     overdraft_limit DECIMAL(18,2) NOT NULL DEFAULT 0.00 CHECK (overdraft_limit >= 0.00)
