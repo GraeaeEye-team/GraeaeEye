@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath("."))
 
 from fintech_app.db.mock_connection import MockDatabase
 from fintech_app.ml.pipeline import UnderwritingAnalyticalPipeline
-from scripts.seed_fixtures import seed_profile
+from ..scripts.seed_fixtures import seed_profile
 
 
 @pytest.mark.asyncio
