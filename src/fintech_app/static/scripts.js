@@ -124,6 +124,7 @@ function update_auth_ui() {
 		if (roleElem) roleElem.innerText = currentUser.role || "ANALYST";
 		if (emailElem) emailElem.innerText = currentUser.email || "";
 	} else {
+		clear_report();
 		if (guestBlock) guestBlock.style.display = "block";
 		if (loggedInBlock) loggedInBlock.style.display = "none";
 		if (workspace) workspace.style.display = "none";
@@ -598,6 +599,62 @@ function render_submodule_cards(submodules) {
 		container.appendChild(card);
 	});
 }
+
+function clear_report() {
+	const company_name = document.getElementById("company_name");
+	if (company_name) company_name.value = company_name.placeholder;
+
+	const input_tax_id = document.getElementById("input_tax_id");
+	if (input_tax_id) input_tax_id.value = input_tax_id.placeholder;
+
+	const industry_code = document.getElementById("industry_code");
+	if (industry_code) industry_code.value = industry_code.placeholder;
+
+	const fileStatement = document.getElementById("file-statement");
+	if (fileStatement) fileStatement.value = "";
+
+	const fileInvoices = document.getElementById("file-invoices");
+	if (fileInvoices) fileInvoices.value = "";
+
+	const fileCredits = document.getElementById("file-credits");
+	if (fileCredits) fileCredits.value = "";
+
+	const reportSection = document.getElementById("report-section");
+	if (reportSection) reportSection.style.display = "none";
+
+	// Score & verdicts
+	const scoreElem = document.getElementById("report-score");
+	if (scoreElem) scoreElem.innerText = "--";
+
+	const verdictElem = document.getElementById("report-verdict-badge");
+	if (verdictElem) {
+		verdictElem.innerText = "--";
+		verdictElem.className = "badge";
+	}
+
+	const recElem = document.getElementById("report-rec-badge");
+	if (recElem) {
+		recElem.innerText = "--";
+		recElem.className = "badge";
+	}
+
+	const pdElem = document.getElementById("report-pd");
+	if (pdElem) {
+		pdElem.innerText = "--%";
+	}
+
+	const memoElem = document.getElementById("report-memo");
+	if (memoElem) {
+		memoElem.innerHTML = "Awaiting analysis completion...";
+	}
+
+	const svg = document.getElementById("submodule-radar-svg");
+	if (svg) svg.innerHTML = "";
+
+	const container = document.getElementById("submodules-reports-list");
+	if (container) container.innerHTML = "";
+}
+
 
 // =========================================================================
 // 6. INITIALIZATION HOOK
