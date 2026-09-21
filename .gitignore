@@ -1,3 +1,5 @@
+src/fintech_app/db/backups/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
