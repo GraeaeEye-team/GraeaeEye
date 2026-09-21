@@ -24,13 +24,10 @@ if sys.platform == "win32":
 
 sys.path.insert(0, os.path.abspath("src"))
 
-from fintech_app.core.config import settings
-from fintech_app.db.mock_connection import MockDatabase
+from ..core.config import settings
+from ..db.mock_connection import MockDatabase
 
-try:
-    from fintech_app.db.connection import Database
-except ImportError:
-    Database = None  # type: ignore
+from ..db.connection import Database
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("seed_fixtures")

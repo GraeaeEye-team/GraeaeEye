@@ -49,7 +49,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.info("Injected database instance opened successfully.")
         else:
             try:
-                from fintech_app.db.connection import Database
+                from .db.connection import Database
 
                 real_db = Database.get_instance()
                 await real_db.open(wait=True, timeout=1.5)
@@ -63,7 +63,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     real_exc,
                 )
                 try:
-                    from fintech_app.db.mock_connection import MockDatabase
+                    from .db.mock_connection import MockDatabase
 
                     mock_inst = MockDatabase.get_instance()
                     await mock_inst.open()
