@@ -140,11 +140,11 @@ async def seed_profile(
     # Idempotency check: verify if business already exists
     existing_rep = await db.get_records_from_businesses(find_only_first=True, tax_id=tax_id)
     if existing_rep.success and existing_rep.data:
-        existing_data = (
-            existing_rep.data[0] if isinstance(existing_rep.data, list) else existing_rep.data
-        )
+        existing_data = existing_rep.data[0] if isinstance(existing_rep.data, list) else existing_rep.data
         existing_id = UUID(str(existing_data["business_id"]))
-        print(f"Profile '{profile}' with tax_id '{tax_id}' already exists in database (business_id={existing_id}). Skipping.")
+        print(
+            f"Profile '{profile}' with tax_id '{tax_id}' already exists in database (business_id={existing_id}). Skipping."
+        )
         return existing_id
 
     # 2. Add business

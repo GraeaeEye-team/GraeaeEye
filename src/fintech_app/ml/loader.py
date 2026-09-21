@@ -279,6 +279,7 @@ class CompanyDataLoader:
                     currency=str(r.get("currency", "MDL")),
                     current_balance=self._to_decimal(r.get("current_balance"), Decimal("0.00")),
                     overdraft_limit=self._to_decimal(r.get("overdraft_limit"), Decimal("0.00")),
+                    account_number=str(r.get("account_number", "OP-MAIN")),
                 )
             )
         return records

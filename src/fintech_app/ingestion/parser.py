@@ -278,7 +278,7 @@ class BankStatementParser:
 
             desc = row_data.get("description", "")
             cp_tax_id = row_data.get("counterparty_tax_id")
-            cp_name = row_data.get("counterparty_raw_name")
+            cp_name = row_data.get("counterparty_raw_name") or row_data.get("counterparty_name")
             acc_num = row_data.get("account_number", "")
             curr = row_data.get("currency", "MDL") or "MDL"
 
@@ -308,7 +308,8 @@ class BankStatementParser:
         # Extract dynamic opening balance from statement header / metadata (Zero Hardcode)
         opening_balance = Decimal("0.00")
         bal_match = re.search(
-            r"(?:sold\s+initial|sold\s+precedent|opening\s+balance|initial\s+balance|sold\s+deschidere)"
+            r"(?:sold\s+initial|sold\s+precedent|opening\s+balance|initial\s+balance|sold\s+deschidere|"
+            r"начальный\s+остаток|входящий\s+остаток|входящее\s+сальдо|исходный\s+остаток)"
             r"[:\s]+([+-]?[0-9\s,\.]+)",
             text,
             re.IGNORECASE,
@@ -374,7 +375,8 @@ class BankStatementParser:
 
             row_joined = " ".join(str_cells)
             bal_match = re.search(
-                r"(?:sold\s+initial|sold\s+precedent|opening\s+balance|initial\s+balance|sold\s+deschidere)"
+                r"(?:sold\s+initial|sold\s+precedent|opening\s+balance|initial\s+balance|sold\s+deschidere|"
+                r"начальный\s+остаток|входящий\s+остаток|входящее\s+сальдо|исходный\s+остаток)"
                 r"[:\s]+([+-]?[0-9\s,\.]+)",
                 row_joined,
                 re.IGNORECASE,
@@ -471,7 +473,9 @@ class BankStatementParser:
 
             desc = str(row_data.get("description", ""))
             cp_tax_id = str(row_data.get("counterparty_tax_id", "")) or None
-            cp_name = str(row_data.get("counterparty_raw_name", "")) or None
+            cp_name = (
+                str(row_data.get("counterparty_raw_name", "")) or str(row_data.get("counterparty_name", "")) or None
+            )
             acc_num = str(row_data.get("account_number", ""))
             curr = str(row_data.get("currency", "MDL") or "MDL")
 
@@ -632,7 +636,21 @@ class InvoiceParser:
             col_norm = re.sub(r"[^\w]", "", col.strip().lower().replace(" ", "_"))
             if any(k in col_norm for k in ("counterparty_role", "role", "rol", "роль")):
                 col_map.setdefault("counterparty_role", idx)
-            elif any(k in col_norm for k in ("invoice_type", "type", "tip", "тип", "вид")):
+            elif any(
+                k in col_norm
+                for k in (
+                    "invoice_type",
+                    "type",
+                    "tip",
+                    "тип",
+                    "вид",
+                    "directie",
+                    "direcție",
+                    "directia",
+                    "дирекция",
+                    "направление",
+                )
+            ):
                 col_map.setdefault("invoice_type", idx)
             elif any(
                 k in col_norm
@@ -650,7 +668,21 @@ class InvoiceParser:
                 col_map.setdefault("actual_payment_date", idx)
             elif any(
                 k in col_norm
-                for k in ("due_date", "term", "deadline", "scadenta", "scadență", "termen", "срок", "срок_оплаты")
+                for k in (
+                    "due_date",
+                    "term",
+                    "deadline",
+                    "scadenta",
+                    "scadență",
+                    "scadentei",
+                    "scadenței",
+                    "scadent",
+                    "scadente",
+                    "termen",
+                    "termen_plata",
+                    "срок",
+                    "срок_оплаты",
+                )
             ):
                 col_map.setdefault("due_date", idx)
             elif any(
@@ -692,6 +724,12 @@ class InvoiceParser:
                     "партнер",
                     "покупатель",
                     "наименование",
+                    "cui_client",
+                    "cui_furnizor",
+                    "cui_partener",
+                    "инн_контрагента",
+                    "cui",
+                    "инн",
                 )
             ):
                 col_map.setdefault("counterparty_name", idx)
@@ -731,19 +769,27 @@ class InvoiceParser:
                 elif t_val in ("RECEIVABLE", "IESIRE", "VANZARE", "CREDIT", "ИСХОДЯЩИЙ", "ДОХОД", "ПРОДАЖА"):
                     inv_type = "RECEIVABLE"
 
-            issue_d = date.today()
+            issue_d = None
             if "issue_date" in col_map and col_map["issue_date"] < len(row):
                 try:
                     issue_d = parse_date_flexible(row[col_map["issue_date"]].strip())
                 except ParsingError:
                     pass
 
-            due_d = issue_d + timedelta(days=30)
+            due_d = None
             if "due_date" in col_map and col_map["due_date"] < len(row):
                 try:
                     due_d = parse_date_flexible(row[col_map["due_date"]].strip())
                 except ParsingError:
                     pass
+
+            if issue_d is None and due_d is not None:
+                issue_d = due_d - timedelta(days=30)
+            elif issue_d is None:
+                issue_d = date.today()
+
+            if due_d is None:
+                due_d = issue_d + timedelta(days=30)
 
             act_pay_d = None
             if "actual_payment_date" in col_map and col_map["actual_payment_date"] < len(row):
@@ -869,6 +915,8 @@ class CreditObligationParser:
                     "tip",
                     "вид_кредита",
                     "тип",
+                    "тип_обязательства",
+                    "обязательств",
                     "продукт",
                 )
             ):
@@ -903,6 +951,7 @@ class CreditObligationParser:
                     "остаток",
                     "остаток_долга",
                     "задолженность",
+                    "долг",
                 )
             ):
                 col_map.setdefault("outstanding_balance", idx)
@@ -920,12 +969,46 @@ class CreditObligationParser:
                 )
             ):
                 col_map.setdefault("monthly_payment", idx)
-            elif any(k in col_norm for k in ("past_due_30d", "overdue_30", "intarziere_30", "просрочка_30")):
-                col_map.setdefault("past_due_30d_count", idx)
-            elif any(k in col_norm for k in ("past_due_90d", "overdue_90", "intarziere_90", "просрочка_90")):
+            elif any(
+                k in col_norm for k in ("past_due_90d", "overdue_90", "intarziere_90", "просрочка_90", "просрочено_90")
+            ):
                 col_map.setdefault("past_due_90d_count", idx)
+            elif any(
+                k in col_norm
+                for k in (
+                    "past_due_30d",
+                    "overdue_30",
+                    "intarziere_30",
+                    "просрочка_30",
+                    "просрочка_дней",
+                    "дней_просрочки",
+                    "просрочено_дней",
+                    "просрочка",
+                )
+            ):
+                col_map.setdefault("past_due_30d_count", idx)
             elif any(k in col_norm for k in ("historical_default", "defaults", "defaulturi", "дефолт", "дефолты")):
                 col_map.setdefault("historical_defaults_count", idx)
+            elif any(
+                k in col_norm
+                for k in (
+                    "interest_rate",
+                    "rate",
+                    "dobanda",
+                    "dobândă",
+                    "ставка",
+                    "процент",
+                    "процентная_ставка",
+                )
+            ):
+                col_map.setdefault("interest_rate", idx)
+            elif any(k in col_norm for k in ("currency", "valuta", "валюта")):
+                col_map.setdefault("currency", idx)
+            elif any(
+                k in col_norm
+                for k in ("collateral_value", "collateral", "garantie", "garanție", "залог", "обеспечение")
+            ):
+                col_map.setdefault("collateral_value", idx)
             elif any(
                 k in col_norm
                 for k in (
@@ -942,8 +1025,15 @@ class CreditObligationParser:
             ):
                 col_map.setdefault("lender_name", idx)
 
+        if "principal_amount" not in col_map and "outstanding_balance" in col_map:
+            col_map["principal_amount"] = col_map["outstanding_balance"]
+        elif "outstanding_balance" not in col_map and "principal_amount" in col_map:
+            col_map["outstanding_balance"] = col_map["principal_amount"]
+
         if "lender_name" not in col_map or "principal_amount" not in col_map:
-            raise ParsingError("Missing mandatory columns ('lender_name', 'principal_amount') in obligations CSV.")
+            raise ParsingError(
+                "Missing mandatory columns ('lender_name', 'principal_amount' or 'outstanding_balance') in obligations CSV."
+            )
 
         records: List[ParsedCreditObligationRecord] = []
         for row in reader:
@@ -961,18 +1051,26 @@ class CreditObligationParser:
             facility_type = "TERM_LOAN"
             if "facility_type" in col_map and col_map["facility_type"] < len(row):
                 ft_val = row[col_map["facility_type"]].strip().upper()
-                if ft_val in ("CREDIT_LINE", "LINE_OF_CREDIT", "LINIE_DE_CREDIT", "КРЕДИТНАЯ_ЛИНИЯ", "ЛИНИЯ"):
+                ft_norm = ft_val.replace(" ", "_").replace("-", "_")
+                if ft_norm in (
+                    "CREDIT_LINE",
+                    "LINE_OF_CREDIT",
+                    "LINIE_DE_CREDIT",
+                    "LINIE_CREDIT",
+                    "КРЕДИТНАЯ_ЛИНИЯ",
+                    "ЛИНИЯ",
+                ):
                     facility_type = "CREDIT_LINE"
-                elif ft_val in ("OVERDRAFT", "DESCOPERIT_DE_CONT", "ОВЕРДРАФТ"):
+                elif ft_norm in ("OVERDRAFT", "DESCOPERIT_DE_CONT", "ОВЕРДРАФТ"):
                     facility_type = "OVERDRAFT"
-                elif ft_val in ("LEASING", "LEASING_FINANCIAR", "ЛИЗИНГ"):
+                elif ft_norm in ("LEASING", "LEASING_FINANCIAR", "ЛИЗИНГ"):
                     facility_type = "LEASING"
-                elif ft_val in ("FACTORING", "ФАКТОРИНГ"):
+                elif ft_norm in ("FACTORING", "ФАКТОРИНГ"):
                     facility_type = "FACTORING"
-                elif ft_val in ("TERM_LOAN", "CREDIT_TERMEN", "IMPRUMUT", "КРЕДИТ", "ЗАЙМ"):
+                elif ft_norm in ("TERM_LOAN", "CREDIT_TERMEN", "IMPRUMUT", "КРЕДИТ", "ЗАЙМ"):
                     facility_type = "TERM_LOAN"
-                elif ft_val in ("TERM_LOAN", "CREDIT_LINE", "LINE_OF_CREDIT", "OVERDRAFT", "LEASING", "FACTORING"):
-                    facility_type = ft_val
+                elif ft_norm in ("TERM_LOAN", "CREDIT_LINE", "LINE_OF_CREDIT", "OVERDRAFT", "LEASING", "FACTORING"):
+                    facility_type = ft_norm
 
             outstanding = principal
             if "outstanding_balance" in col_map and col_map["outstanding_balance"] < len(row):
@@ -1010,6 +1108,32 @@ class CreditObligationParser:
                 else 0
             )
 
+            curr = "MDL"
+            if "currency" in col_map and col_map["currency"] < len(row):
+                raw_curr = row[col_map["currency"]].strip().upper()
+                if raw_curr:
+                    curr = raw_curr
+
+            rate_val = None
+            if "interest_rate" in col_map and col_map["interest_rate"] < len(row):
+                raw_rate = row[col_map["interest_rate"]].strip()
+                if raw_rate:
+                    try:
+                        rate_clean = raw_rate.replace("%", "").replace(",", ".").strip()
+                        rate_val = Decimal(rate_clean)
+                    except Exception:
+                        rate_val = None
+
+            collateral_val = None
+            if "collateral_value" in col_map and col_map["collateral_value"] < len(row):
+                raw_col = row[col_map["collateral_value"]].strip()
+                if raw_col:
+                    try:
+                        parsed_col, _ = clean_amount_string(raw_col)
+                        collateral_val = parsed_col
+                    except Exception:
+                        collateral_val = None
+
             records.append(
                 ParsedCreditObligationRecord(
                     lender_name=lender,
@@ -1020,6 +1144,9 @@ class CreditObligationParser:
                     past_due_30d_count=p30,
                     past_due_90d_count=p90,
                     historical_defaults_count=defaults,
+                    currency=curr,
+                    interest_rate=rate_val,
+                    collateral_value=collateral_val,
                 )
             )
 

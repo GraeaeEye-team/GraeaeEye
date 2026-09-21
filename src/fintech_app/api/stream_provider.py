@@ -17,10 +17,8 @@ import logging
 from typing import Any, AsyncGenerator, Dict, Set
 from uuid import UUID
 
-try:
-    from src.fintech_app.api.contract_mapping import ml_submodule_to_api
-except ModuleNotFoundError:
-    from fintech_app.api.contract_mapping import ml_submodule_to_api
+from ..core.config import settings
+from .contract_mapping import ml_submodule_to_api
 
 logger = logging.getLogger("fintech_app.api.stream_provider")
 
@@ -29,7 +27,8 @@ STAGE_PROGRESS_MAP: Dict[str, int] = {
     "INGESTION": 15,
     "DATA_LOAD": 30,
     "ML_EVALUATION": 60,
-    "SCORING": 85,
+    "SCORING": 80,
+    "LLM_SYNTHESIS": 90,
     "PIPELINE_COMPLETE": 100,
     "COMPLETED": 100,
     "DEGRADED": 100,
@@ -44,23 +43,33 @@ async def stream_telemetry_from_db(
     Asynchronous generator yielding SSE telemetry frames from database tables.
 
     Polling cadence: ~200ms per iteration.
-    Guarantees exact framing:
-        event: <EVENT_NAME>\\ndata: <JSON>\\n\\n
+    Features:
+    - Idle-reset timeout: each new log/heartbeat resets the inactivity counter.
+    - Extended guard buffer: settings.llm_inference_timeout + 60.0 seconds.
+    - Guarantees exact framing:
+        event: <EVENT_NAME>\ndata: <JSON>\n\n
     """
     last_log_id: int = 0
     emitted_stages: Set[str] = set()
-    iteration_count: int = 0
-    MAX_ITERATIONS: int = 1500  # 300 seconds at 200ms cadence
+
+    cadence_sec: float = 0.20
+    # Guard buffer: at least +60 seconds beyond LLM inference timeout
+    timeout_guard_sec: float = getattr(settings, "llm_inference_timeout", 300.0) + 60.0
+    max_idle_iterations: int = int(timeout_guard_sec / cadence_sec)
+    idle_iterations: int = 0
 
     try:
-        while iteration_count < MAX_ITERATIONS:
-            iteration_count += 1
+        while idle_iterations < max_idle_iterations:
+            idle_iterations += 1
             # 1. Fetch new logs from analysis_logs
             logs_rep = await db.get_records_from_analysis_logs(run_id=run_id)
             if logs_rep.success and logs_rep.data:
                 # Filter rows newer than last_log_id and sort chronologically
                 all_logs = logs_rep.data
                 new_logs = [row for row in all_logs if row.get("log_id", 0) > last_log_id]
+                if new_logs:
+                    # Reset idle timer upon receiving fresh logs/heartbeats (Keep-Alive)
+                    idle_iterations = 0
                 new_logs.sort(key=lambda r: r.get("log_id", 0))
 
                 for row in new_logs:
@@ -138,6 +147,7 @@ async def stream_telemetry_from_db(
                         score_val = float(raw_score) if raw_score is not None else 50.0
                         complete_payload = {
                             "run_id": str(run_id),
+                            "status": "COMPLETED",
                             "universal_score": round(score_val, 2),
                             "redirect_url": f"/analyze/report/{run_id}",
                         }
@@ -157,13 +167,13 @@ async def stream_telemetry_from_db(
             await asyncio.sleep(0.20)
         else:
             logger.warning(
-                "SSE telemetry stream timed out after %d iterations for run %s",
-                MAX_ITERATIONS,
+                "SSE telemetry stream idle-timed out after %d iterations for run %s",
+                max_idle_iterations,
                 run_id,
             )
             fail_payload = {
                 "run_id": str(run_id),
-                "error": "Pipeline execution telemetry stream timed out after 300 seconds.",
+                "error": f"Pipeline execution telemetry stream idle-timed out after {int(timeout_guard_sec)} seconds.",
             }
             yield f"event: PIPELINE_FAILED\ndata: {json.dumps(fail_payload)}\n\n"
 

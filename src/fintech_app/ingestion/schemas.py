@@ -174,6 +174,10 @@ class IngestionResult(BaseModel):
     error: Optional[str] = None
     message: str = ""
 
+    @property
+    def error_message(self) -> Optional[str]:
+        return self.error or self.message
+
 
 class NormalizedTransactionSchema(BaseModel):
     """Legacy compatibility schema for backward compatibility."""
@@ -227,6 +231,9 @@ class ParsedCreditObligationRecord(BaseModel):
     past_due_30d_count: int = 0
     past_due_90d_count: int = 0
     historical_defaults_count: int = 0
+    currency: str = "MDL"
+    interest_rate: Optional[Decimal] = None
+    collateral_value: Optional[Decimal] = None
 
     @field_validator("principal_amount", "outstanding_balance", "monthly_payment", mode="before")
     @classmethod
@@ -236,3 +243,33 @@ class ParsedCreditObligationRecord(BaseModel):
         if v is None:
             return Decimal("0.00")
         return abs(Decimal(str(v))).quantize(Decimal("0.01"))
+
+    @field_validator("interest_rate", mode="before")
+    @classmethod
+    def coerce_interest_rate(cls, v: Any) -> Optional[Decimal]:
+        if v is None:
+            return None
+        if isinstance(v, Decimal):
+            return v
+        s = str(v).strip().replace("%", "").replace(",", ".").strip()
+        if not s or s.lower() in ("none", "null", "nan", "-"):
+            return None
+        try:
+            return Decimal(s)
+        except Exception:
+            return None
+
+    @field_validator("collateral_value", mode="before")
+    @classmethod
+    def coerce_collateral_value(cls, v: Any) -> Optional[Decimal]:
+        if v is None:
+            return None
+        if isinstance(v, Decimal):
+            return abs(v).quantize(Decimal("0.01"))
+        s = str(v).strip().replace(" ", "").replace(",", ".").strip()
+        if not s or s.lower() in ("none", "null", "nan", "-"):
+            return None
+        try:
+            return abs(Decimal(s)).quantize(Decimal("0.01"))
+        except Exception:
+            return None

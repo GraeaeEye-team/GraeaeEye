@@ -12,7 +12,7 @@ from enum import StrEnum
 from typing import Dict, List, Optional
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from ..shared.schemas.user_types import AnalysisStatus
 
@@ -276,6 +276,42 @@ class AnalysisReportResponse(BaseModel):
         ...,
         description="Maximum recommended credit limit in Moldovan Leu (MDL).",
     )
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def score(self) -> float:
+        """Alias for universal_score for web and presentation clients."""
+        return self.universal_score
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def risk_band(self) -> str:
+        """Alias for verdict_category for web and presentation clients."""
+        return self.verdict_category.value if hasattr(self.verdict_category, "value") else str(self.verdict_category)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def decision(self) -> str:
+        """Alias for recommendation for web and presentation clients."""
+        return self.recommendation.value if hasattr(self.recommendation, "value") else str(self.recommendation)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def verdict(self) -> str:
+        """Alias for verdict_category for presentation clients."""
+        return self.verdict_category.value if hasattr(self.verdict_category, "value") else str(self.verdict_category)
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def features(self) -> Dict[str, Optional[float]]:
+        """Alias for feature_vector dictionary."""
+        return self.feature_vector.model_dump()
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def application_id(self) -> UUID:
+        """Alias for run_id for presentation clients."""
+        return self.run_id
 
 
 class HealthResponse(BaseModel):

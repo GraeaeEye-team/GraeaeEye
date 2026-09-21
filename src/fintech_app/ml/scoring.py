@@ -9,8 +9,16 @@ and generates structured synthesis prompts for LLM underwriting memoranda.
 
 from dataclasses import dataclass, field
 import math
+from typing import Optional, Union
 
 from .base import clamp
+from .llm_client import (
+    AsyncLLMClient,
+    EXECUTOR_REGISTRY,
+    LLMExecutor,
+    LLMGenerationResult,
+    default_llm_client,
+)
 
 
 @dataclass
@@ -295,6 +303,44 @@ investment credit committee."""
             llm_synthesis_prompt=llm_synthesis_prompt,
         )
 
+    async def generate_llm_summary(
+        self,
+        scoring_result: CreditScoringResult,
+        llm_client: Optional[AsyncLLMClient] = None,
+        executor: Optional[Union[str, LLMExecutor]] = None,
+        timeout: Optional[float] = None,
+    ) -> str:
+        """Invokes the async LLM client to produce an institutional underwriting memorandum."""
+        res = await self.generate_detailed_llm_summary(
+            scoring_result,
+            llm_client=llm_client,
+            executor=executor,
+            timeout=timeout,
+        )
+        return res.text
+
+    async def generate_detailed_llm_summary(
+        self,
+        scoring_result: CreditScoringResult,
+        llm_client: Optional[AsyncLLMClient] = None,
+        executor: Optional[Union[str, LLMExecutor]] = None,
+        timeout: Optional[float] = None,
+    ) -> LLMGenerationResult:
+        """Invokes the async LLM client returning LLMGenerationResult with provenance metadata."""
+        client = llm_client or default_llm_client
+        meta = {
+            "score": scoring_result.investment_attractiveness_score,
+            "verdict_category": scoring_result.verdict_category,
+            "recommendation": scoring_result.recommendation,
+            "probability_of_default_pct": scoring_result.probability_of_default * 100,
+        }
+        return await client.generate_detailed_summary(
+            scoring_result.llm_synthesis_prompt,
+            meta,
+            executor=executor,
+            timeout=timeout,
+        )
+
 
 def evaluate_counterparty_risk(
     feature_vector: list[float | None],
@@ -312,4 +358,9 @@ __all__ = [
     "CreditScoringResult",
     "evaluate_counterparty_risk",
     "SUBMODULE_WEIGHTS",
+    "AsyncLLMClient",
+    "default_llm_client",
+    "LLMExecutor",
+    "LLMGenerationResult",
+    "EXECUTOR_REGISTRY",
 ]

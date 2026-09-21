@@ -22,6 +22,9 @@ class Settings:
     openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
     llm_model: str = os.getenv("LLM_MODEL", "gpt-4o-mini")
     ollama_host: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+    llm_provider: str = os.getenv("LLM_PROVIDER", "auto")
+    llm_inference_timeout: float = float(os.getenv("LLM_INFERENCE_TIMEOUT", "300.0"))
+    llm_heartbeat_interval: float = float(os.getenv("LLM_HEARTBEAT_INTERVAL", "10.0"))
 
     @property
     def database_url(self) -> str:

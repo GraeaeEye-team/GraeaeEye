@@ -49,8 +49,13 @@ class IngestionPipeline:
 
     async def run(
         self,
-        metadata: Dict[str, Any],
+        metadata: Optional[Dict[str, Any]] = None,
         files: Optional[List[Any]] = None,
+        strict: bool = False,
+        tax_id: Optional[str] = None,
+        company_name: Optional[str] = None,
+        raw_files: Optional[List[Any]] = None,
+        **kwargs: Any,
     ) -> IngestionResult:
         """
         Запускает полный цикл инжестии:
@@ -60,14 +65,80 @@ class IngestionPipeline:
         4. Параллельный сбор открытых внешних данных (суды, налоги, макро).
         5. Сохранение пачек транзакций через DAL (bulk_insert_transactions).
         """
+        meta = dict(metadata or {})
+        if tax_id:
+            meta["tax_id"] = tax_id
+        if company_name:
+            meta["company_name"] = company_name
+        for k, v in kwargs.items():
+            meta.setdefault(k, v)
+        metadata = meta
+
         warnings: List[str] = []
         try:
             # 1. Инициализация идентификаторов
             biz_id_raw = metadata.get("business_id")
-            business_id = UUID(str(biz_id_raw)) if biz_id_raw else uuid4()
+            business_id = UUID(str(biz_id_raw)) if biz_id_raw else None
+
+            # Look up existing business by tax_id for idempotency
+            if (
+                business_id is None
+                and metadata.get("tax_id")
+                and self.db is not None
+                and hasattr(self.db, "get_records_from_businesses")
+            ):
+                try:
+                    existing = await self.db.get_records_from_businesses(
+                        find_only_first=True, tax_id=str(metadata["tax_id"])
+                    )
+                    if existing.success and existing.data:
+                        rec = (
+                            existing.data
+                            if isinstance(existing.data, dict)
+                            else (existing.data[0] if isinstance(existing.data, list) and existing.data else None)
+                        )
+                        if rec and "business_id" in rec:
+                            business_id = (
+                                rec["business_id"]
+                                if isinstance(rec["business_id"], UUID)
+                                else UUID(str(rec["business_id"]))
+                            )
+                except Exception as lk_err:
+                    logger.debug("Lookup existing business by tax_id failed: %s", lk_err)
+
+            if business_id is None:
+                business_id = uuid4()
 
             acc_id_raw = metadata.get("account_id")
-            account_id = UUID(str(acc_id_raw)) if acc_id_raw else uuid4()
+            account_id = UUID(str(acc_id_raw)) if acc_id_raw else None
+            if account_id is None and self.db is not None and hasattr(self.db, "get_records_from_bank_accounts"):
+                try:
+                    existing_acc = await self.db.get_records_from_bank_accounts(
+                        find_only_first=True,
+                        business_id=business_id,
+                        account_number="OP-MAIN",
+                    )
+                    if existing_acc.success and existing_acc.data:
+                        rec_a = (
+                            existing_acc.data
+                            if isinstance(existing_acc.data, dict)
+                            else (
+                                existing_acc.data[0]
+                                if isinstance(existing_acc.data, list) and existing_acc.data
+                                else None
+                            )
+                        )
+                        if rec_a and "account_id" in rec_a:
+                            account_id = (
+                                rec_a["account_id"]
+                                if isinstance(rec_a["account_id"], UUID)
+                                else UUID(str(rec_a["account_id"]))
+                            )
+                except Exception as acc_lk_err:
+                    logger.debug("Lookup existing bank account failed: %s", acc_lk_err)
+
+            if account_id is None:
+                account_id = uuid4()
 
             uploaded_files = files or []
             batches: List[StandardizedTransactionBatch] = []
@@ -157,6 +228,8 @@ class IngestionPipeline:
                     except ParsingError as p_err:
                         logger.warning("Parsing warning for file '%s': %s", filename, p_err)
                         warnings.append(f"Parsing '{filename}': {p_err}")
+                        if strict:
+                            raise p_err
                         continue
 
             if uploaded_files and not batches and not invoices_list and not obligations_list:
@@ -211,6 +284,7 @@ class IngestionPipeline:
                         if not (ba_check.success and ba_check.data):
                             await self.db.add_record_to_bank_accounts(
                                 business_id=business_id,
+                                account_number="OP-MAIN",
                                 currency="MDL",
                                 current_balance=Decimal("0.00"),
                                 account_id=account_id,
@@ -254,7 +328,11 @@ class IngestionPipeline:
                                         counterparty_id=cp_id,
                                     )
                                     if not (cp_chk.success and cp_chk.data):
-                                        c_name = t.counterparty_name or f"Counterparty {str(cp_id)[:8]}"
+                                        c_name = (
+                                            t.counterparty_name
+                                            or t.counterparty_tax_id
+                                            or f"Counterparty {str(cp_id)[:8]}"
+                                        )
                                         await self.db.add_record_to_counterparties(
                                             counterparty_id=cp_id,
                                             business_id=business_id,
@@ -265,6 +343,8 @@ class IngestionPipeline:
                                     registered_cp_ids.add(cp_id)
                                     if t.counterparty_name:
                                         registered_cp_names[t.counterparty_name] = cp_id
+                                    if t.counterparty_tax_id:
+                                        registered_cp_names[t.counterparty_tax_id] = cp_id
                                 except Exception as cp_err:
                                     logger.warning(
                                         "Failed to register counterparty %s: %s. Clearing FK.",
@@ -416,6 +496,8 @@ class IngestionPipeline:
             )
 
         except Exception as unhandled_err:
+            if strict:
+                raise
             logger.exception("Critical error inside IngestionPipeline.run: %s", unhandled_err)
             return IngestionResult(
                 success=False,

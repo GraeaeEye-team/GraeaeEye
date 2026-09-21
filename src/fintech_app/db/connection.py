@@ -790,10 +790,13 @@ class Database:
         current_balance: Decimal,
         overdraft_limit: Decimal = Decimal("0.00"),
         account_id: Optional[UUID] = None,
+        account_number: str = "OP-MAIN",
+        **kwargs: Any,
     ) -> DatabaseReport:
         data = {
             "account_id": account_id or uuid4(),
             "business_id": business_id,
+            "account_number": account_number,
             "currency": currency,
             "current_balance": current_balance,
             "overdraft_limit": overdraft_limit,
@@ -1341,4 +1344,3 @@ class Database:
 
 
 # Export MockDatabase convenience alias if needed
-from .mock_connection import MockDatabase

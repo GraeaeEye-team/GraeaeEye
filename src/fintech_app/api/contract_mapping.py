@@ -20,36 +20,20 @@ from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import UUID, uuid4
 
-try:
-    from src.fintech_app.api.schemas import (
-        CANONICAL_18D_KEYS,
-        AnalysisReportResponse,
-        AnalysisStatus,
-        FeatureVector,
-        LLMSynthesisSummary,
-        Recommendation,
-        SubmoduleExecutionStatus,
-        SubmoduleReportCard,
-        VerdictCategory,
-    )
-    from src.fintech_app.ml.base import EvaluationStatus, SubmoduleResult
-    from src.fintech_app.ml.pipeline import UnderwritingPipelineResult
-    from src.fintech_app.ml.scoring import CreditScoringEngine, CreditScoringResult
-except ModuleNotFoundError:
-    from fintech_app.api.schemas import (
-        CANONICAL_18D_KEYS,
-        AnalysisReportResponse,
-        AnalysisStatus,
-        FeatureVector,
-        LLMSynthesisSummary,
-        Recommendation,
-        SubmoduleExecutionStatus,
-        SubmoduleReportCard,
-        VerdictCategory,
-    )
-    from fintech_app.ml.base import EvaluationStatus, SubmoduleResult
-    from fintech_app.ml.pipeline import UnderwritingPipelineResult
-    from fintech_app.ml.scoring import CreditScoringEngine, CreditScoringResult
+from .schemas import (
+    CANONICAL_18D_KEYS,
+    AnalysisReportResponse,
+    AnalysisStatus,
+    FeatureVector,
+    LLMSynthesisSummary,
+    Recommendation,
+    SubmoduleExecutionStatus,
+    SubmoduleReportCard,
+    VerdictCategory,
+)
+from ..ml.base import EvaluationStatus, SubmoduleResult
+from ..ml.pipeline import UnderwritingPipelineResult
+from ..ml.scoring import CreditScoringEngine, CreditScoringResult
 
 
 # =====================================================================

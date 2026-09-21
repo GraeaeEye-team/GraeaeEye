@@ -39,7 +39,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Initializing GraeaeEye API startup lifecycle...")
 
     if not settings.use_mock_engine:
-
         if hasattr(app.state, "db") and app.state.db is not None:
             db_inst = app.state.db
             if hasattr(db_inst, "open") and not getattr(db_inst, "is_open", False):
@@ -127,6 +126,13 @@ app.add_middleware(
 
 # Register API Router
 app.include_router(api_router)
+
+
+@app.get("/health", include_in_schema=False)
+async def root_health():
+    """Root healthcheck endpoint mirroring /api/v1/health."""
+    db_status = "connected" if getattr(app.state, "db", None) is not None else "unavailable"
+    return {"status": "ok", "mock_engine": settings.use_mock_engine, "db": db_status}
 
 
 # =====================================================================

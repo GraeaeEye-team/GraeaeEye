@@ -140,6 +140,12 @@ async def start_analysis(
         description='Optional JSON array of active submodule codes, e.g. ["OS","WPR","MSR","CD","SD","ICR","CFS","RQ","ICDL"]. Defaults to all submodules.',
     ),
     files: List[UploadFile] = File(default=[], description="Uploaded CSV financial ledgers (max 5)"),
+    bank_statement_file: Optional[UploadFile] = File(None, description="Bank statement ledger file"),
+    bank_statement: Optional[UploadFile] = File(None, description="Bank statement file alias"),
+    invoices_file: Optional[UploadFile] = File(None, description="Invoices file"),
+    invoices: Optional[UploadFile] = File(None, description="Invoices file alias"),
+    credit_obligations_file: Optional[UploadFile] = File(None, description="Credit obligations file"),
+    credit_obligations: Optional[UploadFile] = File(None, description="Credit obligations file alias"),
     current_user: CurrentUser = Depends(get_current_user),
     db: Any = Depends(get_db),
 ) -> AnalysisStartResponse:
@@ -173,8 +179,25 @@ async def start_analysis(
             },
         )
 
-    # 2. File-count guard (executed BEFORE BackgroundTasks enqueue, None-safe)
-    uploaded = files or []
+    # 2. Collect and aggregate all uploaded files (supporting aliases)
+    uploaded = list(files or [])
+    named_aliases = [
+        ("statement", bank_statement_file or bank_statement),
+        ("invoices", invoices_file or invoices),
+        ("obligations", credit_obligations_file or credit_obligations),
+    ]
+    for role, uf in named_aliases:
+        if uf is not None:
+            cur_name = (uf.filename or "file.csv").lower()
+            if role == "statement" and not any(k in cur_name for k in ("statement", "extras", "выписк")):
+                uf.filename = f"statement_{uf.filename}" if uf.filename else "statement.csv"
+            elif role == "invoices" and not any(k in cur_name for k in ("invoice", "factura", "facturi", "счет")):
+                uf.filename = f"invoices_{uf.filename}" if uf.filename else "invoices.csv"
+            elif role == "obligations" and not any(k in cur_name for k in ("obligation", "credit", "loan", "кредит")):
+                uf.filename = f"obligations_{uf.filename}" if uf.filename else "obligations.csv"
+            uploaded.append(uf)
+
+    # 3. File-count guard (executed BEFORE BackgroundTasks enqueue, None-safe)
     if len(uploaded) > 5:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

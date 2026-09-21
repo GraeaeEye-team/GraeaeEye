@@ -447,6 +447,7 @@ class MockDatabase:
             "business_id": business_id,
             "tax_id": tax_id,
             "legal_name": legal_name,
+            "counterparty_name": legal_name,
             "counterparty_role": counterparty_role,
         }
         return self._mock_insert("counterparties", data)
@@ -541,10 +542,13 @@ class MockDatabase:
         current_balance: Decimal,
         overdraft_limit: Decimal = Decimal("0.00"),
         account_id: Optional[UUID] = None,
+        account_number: str = "OP-MAIN",
+        **kwargs: Any,
     ) -> DatabaseReport:
         data = {
             "account_id": account_id or uuid4(),
             "business_id": business_id,
+            "account_number": account_number,
             "currency": currency,
             "current_balance": current_balance,
             "overdraft_limit": overdraft_limit,

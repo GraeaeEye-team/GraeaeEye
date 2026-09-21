@@ -13,7 +13,7 @@ from .base import (
     SubmoduleResult,
     clamp,
 )
-from ..schemas.user_types import EvaluationStatus
+from ..shared.schemas.user_types import EvaluationStatus
 
 
 class SupplierDependencyEvaluator(BaseSubmoduleEvaluator):
