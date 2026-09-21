@@ -224,3 +224,10 @@ __marimo__/
 .ollama/
 
 *.dump
+
+# Smart Credit Parser files
+smart_credit_uploads/
+mapping_cache.json
+.gemini/
+scratch/
+demo_*.csv

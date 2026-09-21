@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart Credit System - Мастер загрузки данных</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>💳</text></svg>">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="logo-container">
+      <div class="logo-badge">SCS</div>
+      <div>
+        <div class="brand-title">Smart Credit System</div>
+        <div class="brand-sub">Universal AI-Driven Ingestion Engine</div>
+      </div>
+    </div>
+    <div class="user-control">
+      <span style="font-size: 0.85rem; color: var(--text-secondary);">Текущая роль:</span>
+      <select id="userRoleSelect" class="role-select-box" onchange="onRoleChange()">
+        <option value="ANALYST">ANALYST (Аналитик: Загрузка, Маппинг, Dry-Run)</option>
+        <option value="UNDERWRITER" selected>UNDERWRITER (Андеррайтер: Утверждение и Запись в БД)</option>
+        <option value="ADMIN">ADMIN (Администратор: Полный доступ)</option>
+      </select>
+      <button class="btn btn-secondary" onclick="toggleHistoryModal()">История загрузок</button>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main>
+
+    <!-- Stepper Navigation -->
+    <div class="stepper">
+      <div class="step-item active" id="stepIndicator1" onclick="goToStep(1)">
+        <div class="step-num">1</div>
+        <span>1. Загрузка файла</span>
+      </div>
+      <div class="step-item" id="stepIndicator2" onclick="goToStep(2)">
+        <div class="step-num">2</div>
+        <span>2. Сопоставление (AI Mapping)</span>
+      </div>
+      <div class="step-item" id="stepIndicator3" onclick="goToStep(3)">
+        <div class="step-num">3</div>
+        <span>3. Проверка (Dry-Run)</span>
+      </div>
+      <div class="step-item" id="stepIndicator4" onclick="goToStep(4)">
+        <div class="step-num">4</div>
+        <span>4. Результат и фиксация</span>
+      </div>
+    </div>
+
+    <!-- STEP 1: Upload -->
+    <section id="step1" class="card">
+      <div class="card-title">
+        <span>Шаг 1: Загрузка данных клиента</span>
+        <span class="badge badge-blue">Автоопределение формата</span>
+      </div>
+      <p class="card-desc">
+        Поддерживаются любые форматы: <b>CSV, TSV, Excel (.xlsx, .xlsm), JSON, XML, TXT, PDF</b>.
+        Парсер автоматически определит кодировку, структуру колонок и проверит применимость Fast-Path.
+      </p>
+
+      <div class="drop-zone" id="dropZone" onclick="document.getElementById('fileInput').click()">
+        <div class="drop-icon">📁</div>
+        <p style="font-size: 1.1rem; font-weight: 600;">Перетащите файл сюда или нажмите для выбора</p>
+        <p style="color: var(--text-muted); font-size: 0.85rem; margin-top: 0.5rem;">
+          Максимальный размер: 50 МБ • Полная изоляция от Prompt Injection
+        </p>
+        <input type="file" id="fileInput" style="display: none;" onchange="handleFileSelected(event)">
+      </div>
+
+      <!-- File inspection summary card (appears after upload) -->
+      <div id="fileInspectionSummary" class="card hidden" style="margin-top: 1.5rem; background: #0c1424;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h4 id="inspectFileName" style="font-size: 1rem;"></h4>
+          <span id="inspectFastPathBadge"></span>
+        </div>
+        <div style="margin-top: 0.75rem; font-size: 0.85rem; color: var(--text-secondary);" id="inspectDetails"></div>
+        
+        <div style="margin-top: 1rem;">
+          <p style="font-size: 0.85rem; font-weight: 600; margin-bottom: 0.5rem;">Пример распознанных колонок:</p>
+          <div id="inspectHeadersList" style="display: flex; flex-wrap: wrap; gap: 0.4rem;"></div>
+        </div>
+
+        <div class="wizard-actions">
+          <button class="btn btn-secondary" onclick="resetUpload()">Выбрать другой файл</button>
+          <button class="btn btn-success" onclick="proceedToStep2()">Перейти к сопоставлению колонок &rarr;</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- STEP 2: Mapping -->
+    <section id="step2" class="card hidden">
+      <div class="card-title">
+        <span>Шаг 2: Семантическое сопоставление (AI Schema Mapping)</span>
+        <span class="badge badge-yellow">Проверка оператором</span>
+      </div>
+      <p class="card-desc">
+        ИИ сопоставил колонки исходного файла с канонической схемой <code>schema.sql</code>.
+        Проверьте соответствие, скорректируйте назначения или исключите лишние поля.
+      </p>
+
+      <div style="margin-bottom: 1rem; display: flex; align-items: center; gap: 1rem;">
+        <label style="font-size: 0.9rem; font-weight: 600;">Целевая таблица БД:</label>
+        <select id="targetTableSelect" class="role-select-box" onchange="onTargetTableChange()">
+          <!-- Populated dynamically -->
+        </select>
+        <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: var(--text-secondary); margin-left: auto;">
+          <input type="checkbox" id="saveCacheCheckbox" checked>
+          Запомнить сопоставление в кэше для аналогичных файлов
+        </label>
+      </div>
+
+      <div id="mappingAlertBox" class="issues-card hidden" style="margin-bottom: 1rem; border-color: rgba(239, 68, 68, 0.5); background: rgba(239, 68, 68, 0.1);">
+        <div class="issues-title" style="color: #f87171;" id="mappingAlertTitle">⚠️ Обнаружена коллизия сопоставления колонок</div>
+        <p id="mappingAlertText" style="margin: 0.5rem 0 0 0; font-size: 0.85rem; color: #fca5a5;"></p>
+      </div>
+
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Колонка в файле</th>
+            <th>Целевая колонка в schema.sql</th>
+            <th>Уверенность ИИ</th>
+            <th>Обоснование / Преобразование</th>
+          </tr>
+        </thead>
+        <tbody id="mappingTableBody">
+          <!-- Populated dynamically -->
+        </tbody>
+      </table>
+
+      <div class="wizard-actions">
+        <button class="btn btn-secondary" onclick="goToStep(1)">&larr; Назад к загрузке</button>
+        <button id="runDryRunBtn" class="btn btn-success" onclick="runDryRunAndProceed()">Запустить проверку (Dry-Run) &rarr;</button>
+      </div>
+    </section>
+
+    <!-- STEP 3: Dry-Run -->
+    <section id="step3" class="card hidden">
+      <div class="card-title">
+        <span>Шаг 3: Предварительная проверка (Dry-Run)</span>
+        <span class="badge badge-green">БД не изменяется</span>
+      </div>
+      <p class="card-desc">
+        Детерминированная проверка ограничений PostgreSQL 16: типы данных, <code>NOT NULL</code>, <code>CHECK</code>-ограничения, допустимые <code>ENUM</code> и уникальность.
+      </p>
+
+      <div class="stat-grid">
+        <div class="stat-box">
+          <div class="stat-label">Всего прочитано строк</div>
+          <div class="stat-val" id="dryRunTotal" style="color: #60a5fa;">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Готово к записи (Валидно)</div>
+          <div class="stat-val" id="dryRunAccepted" style="color: #34d399;">0</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Отклонено с ошибками</div>
+          <div class="stat-val" id="dryRunRejected" style="color: #f87171;">0</div>
+        </div>
+      </div>
+
+      <!-- Warnings and issues list -->
+      <div id="dryRunIssuesCard" class="card hidden" style="background: #17111b; border-color: #451a24;">
+        <h4 style="color: #f87171; margin-bottom: 0.75rem;">⚠️ Выявленные замечания и несоответствия схеме:</h4>
+        <ul id="dryRunIssuesList" style="padding-left: 1.25rem; font-size: 0.85rem; color: #fca5a5;"></ul>
+      </div>
+
+      <!-- Preview of normalized records -->
+      <h4 style="margin: 1.5rem 0 0.5rem 0;">Предпросмотр нормализованных записей:</h4>
+      <div style="overflow-x: auto;">
+        <table class="data-table" id="previewDataTable">
+          <thead id="previewTableHead"></thead>
+          <tbody id="previewTableBody"></tbody>
+        </table>
+      </div>
+
+      <div class="wizard-actions">
+        <button class="btn btn-secondary" onclick="goToStep(2)">&larr; Скорректировать сопоставление</button>
+        <button class="btn btn-success" id="commitBtn" onclick="commitToDatabase()">
+          Подтвердить и записать в базу данных &rarr;
+        </button>
+      </div>
+    </section>
+
+    <!-- STEP 4: Result -->
+    <section id="step4" class="card hidden">
+      <div class="card-title">
+        <span>Шаг 4: Фиксация и результаты аудита</span>
+        <span class="badge badge-green" id="finalStatusBadge">Записано</span>
+      </div>
+
+      <div class="stat-box" style="margin: 1.5rem 0; text-align: left; padding: 1.5rem;">
+        <h3 id="commitResultHeading" style="color: #34d399; margin-bottom: 0.5rem;">Данные успешно зафиксированы в БД!</h3>
+        <p id="commitResultSub" style="color: var(--text-secondary); font-size: 0.9rem;"></p>
+      </div>
+
+      <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem;">
+        <button class="btn btn-secondary" onclick="downloadReport('markdown')">📥 Скачать аудиторский отчет (.md)</button>
+        <button class="btn btn-secondary" onclick="downloadReport('json')">📥 Скачать отчет (.json)</button>
+      </div>
+
+      <div class="wizard-actions">
+        <button class="btn btn-secondary" onclick="resetUpload()">Загрузить другой файл</button>
+        <button class="btn btn-success" onclick="toggleHistoryModal()">Перейти в историю загрузок</button>
+      </div>
+    </section>
+
+    <!-- HISTORY MODAL -->
+    <div id="historyModal" class="card hidden" style="position: fixed; inset: 2rem; z-index: 1000; background: #0f172a; overflow-y: auto; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);">
+      <div class="card-title">
+        <span>История сессий импорта данных</span>
+        <button class="btn btn-secondary" onclick="toggleHistoryModal()">Закрыть ✖</button>
+      </div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Файл</th>
+            <th>Таблица</th>
+            <th>Статус</th>
+            <th>Принято / Всего</th>
+            <th>Дата и автор</th>
+            <th>Кем зафиксировано</th>
+          </tr>
+        </thead>
+        <tbody id="historyTableBody"></tbody>
+      </table>
+    </div>
+
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
