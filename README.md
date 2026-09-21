@@ -1,195 +1,201 @@
 # GraeaeEye: Explainable SME Underwriting Engine
 
+[![CI](https://github.com/GraeaeEye-team/GraeaeEye/actions/workflows/ci.yml/badge.svg)](https://github.com/GraeaeEye-team/GraeaeEye/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python: 3.12](https://img.shields.io/badge/Python-3.12-brightgreen.svg)](https://www.python.org/)
+[![PostgreSQL: 16](https://img.shields.io/badge/PostgreSQL-16-blue.svg)](https://www.postgresql.org/)
+
 ## What It Is
-GraeaeEye is a rule-based underwriting scorecard that evaluates SME financing readiness through modular financial analysis. It identifies liquidity, debt, receivables, and concentration risks, explains contributing factors, and flags incomplete cases for human review.
-
-**Current implementation:** deterministic rule-based scoring (not ML/AI). Weights and thresholds are expert-defined. No trained models, no ground truth validation yet.
+**GraeaeEye** — это институциональный аналитический скоринговый комплекс для оценки кредитоспособности и финансовой устойчивости предприятий малого и среднего бизнеса (SME). Система проводит глубокий многофакторный анализ финансовых потоков, платежной дисциплины, контрагентских связей и макроэкономических рисков, вычисляет вероятности дефолта (PD) и формирует детальный кредитный меморандум андеррайтера.
 
 ---
 
-## Architecture (Phase 1-2 Complete)
+## Архитектура и ключевые компоненты
 
-### Core Components (DONE)
-- **9 Financial Submodules** (OS, WPR, MSR, CD, SD, ICR, CFS, RQ, ICDL): evaluate ownership structure, web reputation, macro risk, client/supplier dependency, cash readiness/stability, receivables quality, credit discipline
-- **18D Feature Vector**: canonical financial indices (liquidity, leverage, concentration, coverage, and stability metrics)
-- **Scoring Engine**: weighted average with dynamic renormalization for missing data
-- **PostgreSQL DAL**: 57-method async interface with parameterized queries and in-memory mock fallback
-- **Real Auth**: Argon2id password hashing, JWT session tokens, secure HttpOnly cookies, and seed dev user
-- **Real Orchestration**: CSV ingestion → DB → ML analytical pipeline → SSE telemetry → persisted report
-- **Regression Shield**: 57 automated tests (contract, integration, fixtures) + GitHub Actions CI
+### 1. Аналитическое ядро и скоринг
+- **9 аналитических субмодулей**:
+  - `OS` (Ownership Stability) — структура владения и стабильность менеджмента.
+  - `WPR` (Web Presence & Reputation) — цифровая репутация и юридические риски.
+  - `MSR` (Macro & Sector Resilience) — макроэкономическая устойчивость отрасли.
+  - `CD` (Client Dependency) — концентрация и зависимость от покупателей.
+  - `SD` (Supplier Dependency) — концентрация и зависимость от поставщиков.
+  - `ICR` (Immediate Cash Readiness) — оперативная ликвидность (Cash Ratio, DCOH).
+  - `CFS` (Cash Flow Stability) — стабильность и волатильность денежных потоков.
+  - `RQ` (Receivables Quality) — качество дебиторской задолженности и оборачиваемость.
+  - `ICDL` (Internal Credit Discipline & Leverage) — кредитная история и долговая нагрузка.
+- **18D канонический вектор признаков** (Canonical Financial Indices).
+- **Взвешенный скоринг с динамической перенормировкой** при отсутствии части документов.
 
-### Two Modes
-- `USE_MOCK_ENGINE=true` (dev/demo): synthetic data, fast iteration, in-memory fixtures
-- `USE_MOCK_ENGINE=false` (production): real PostgreSQL + analytical pipeline execution
+### 2. Прием и нормализация данных (Ingestion)
+- Многоформатные парсеры: **CSV**, **XLSX**, **XLS**.
+- Автоматическое определение диалектов, разделителей (`,`, `;`, `\t`) и заголовков.
+- Мультиязычная поддержка (русский, молдавский/румынский, английский).
+- Идемпотентная загрузка с транзакционным откатом при повреждении данных.
+
+### 3. Генерация кредитного меморандума (LLM Synthesis & Report Builder)
+Модульная стратегия формирования экспертных заключений андеррайтера (`AsyncLLMClient`):
+- **Локальная нейросеть (Ollama)**: быстрый, приватный инференс на локальном оборудовании без отправки данных во внешние облака (`llama3.2:1b`, `llama3:8b`, `qwen2.5` и др.).
+- **Облачная нейросеть (OpenAI)**: `gpt-4o-mini` при наличии API-ключа.
+- **Институциональный Report Builder (не-ИИ режим по умолчанию)**: детерминированный генератор структурированного меморандума кредитного комитета (нулевая задержка, полная автономность без необходимости устанавливать нейросети).
+
+### 4. Веб-интерфейс и телеметрия
+- **Веб-дашборд** на `http://localhost:8000`: интерактивная форма загрузки файлов, визуализация скоринга и круговой спидометр риска, отображение полного меморандума.
+- **Real-time SSE-стриминг** (`/api/v1/analysis/stream/{run_id}`): пошаговая телеметрия выполнения аналитического пайплайна с фоновыми heartbeat-сообщениями.
+
+### 5. База данных и Zero-Wipeout бэкапы
+- Асинхронный DAL на **PostgreSQL 16** (57 методов с защитой от SQL-инъекций).
+- **Демон бэкапов** (`backup_daemon.py`): периодические дампы (`pg_dump -F c`) с защитой от перезаписи пустой базой (Zero-Wipeout Protection).
+- **Автоматическое восстановление** (`AUTO_RESTORE_LAST_DB_BACKUP=true`): автоматическое наполнение таблиц из последнего валидного бэкапа при старте Docker.
 
 ---
 
-## Quick Start
+## Быстрый старт
 
-### Option 1: Local Development (Recommended)
+### Вариант 1: Запуск через Docker Compose (Рекомендуется)
+
+По умолчанию проект запускается в надежном **автономном режиме (без ИИ)** — кредитный меморандум формируется институциональным сборщиком мгновенно:
 
 ```bash
-# Clone
+# 1. Клонирование репозитория
 git clone https://github.com/GraeaeEye-team/GraeaeEye.git
 cd GraeaeEye
 
-# Install dependencies
-python -m venv venv
-source venv/bin/activate  # Windows: .\venv\Scripts\activate
-pip install -r requirements.txt
+# 2. Создание конфига (если еще не создан)
+cp .env.example .env
 
-# Set environment
-export PYTHONPATH=src
-export USE_MOCK_ENGINE=true
-export SECRET_KEY=dev-secret-change-in-production
-
-# Seed dev user
-python -m scripts.seed_dev_user
-
-# Run server
-uvicorn fintech_app.main:app --reload --port 8000
-
-# Open Swagger UI
-open http://localhost:8000/docs
-```
-
-### Option 2: Docker Compose
-
-```bash
-# Build and start services (PostgreSQL + Backend + Backup Daemon)
+# 3. Запуск контейнеров (PostgreSQL + Backend + Backup Daemon)
 docker compose up -d --build
 
-# Health check
-curl -f http://localhost:8000/health
+# 4. Проверка статуса
+curl -f http://localhost:8000/api/v1/health
 
-# View live logs
-docker compose logs -f backend
-
-# Stop services
-docker compose down
+# 5. Открытие веб-интерфейса
+# Перейдите в браузере на: http://localhost:8000
 ```
 
 ---
 
-## API Endpoints
+## Локальная нейросеть (Ollama) и интерактивный установщик
 
-All primary application routes are versioned under `/api/v1`:
+В проект интегрирована поддержка локальных LLM для генерации развернутых кредитных меморандумов.
 
-### Authentication (`/api/v1/auth`)
-- `POST /api/v1/auth/register` — Register a new analyst account (Argon2id password hashing, email validation).
-- `POST /api/v1/auth/token` — Authenticate analyst credentials, set `session_token` HttpOnly cookie.
+### Почему Ollama работает на хосте, а не в Docker?
+1. **Экономия дискового пространства корня**: Docker-образ Ollama весит ~5.5 ГБ, а распаковка слоев может переполнить корневой раздел системы (`/`).
+2. **Безопасное хранение весов**: веса моделей скачиваются в домашнюю директорию `~/.ollama` на основном диске пользователя.
+3. **Прямой доступ к GPU/CPU**: максимальная скорость генерации токенов без накладных расходов виртуализации Docker.
 
-### Analysis (`/api/v1/analysis`)
-- `POST /api/v1/analysis/start` — Initiate underwriting run with up to 5 financial CSV files (multipart form upload).
-- `GET /api/v1/analysis/stream/{run_id}` — Real-time Server-Sent Events (SSE) progress telemetry.
-- `GET /api/v1/analysis/report/{run_id}` — Full structured underwriting report with 18D canonical feature vector and subscores.
+### Интерактивная установка и запуск (`setup_ollama.sh`)
 
-### Health
-- `GET /health` — Service health check endpoint.
+В корне репозитория находится интерактивный скрипт настройки:
 
----
-
-## Fixture Data
-
-The repository includes contrasting financial profiles under `data/fixtures/` designed to validate the scoring engine across distinct risk tiers:
-
-- **`GOOD_SME`** (`data/fixtures/good_sme/`):
-  - Strong liquidity (Cash Ratio ≈ 5.0, Current Assets: 1.5M, Current Liabilities: 300k).
-  - Clean receivables, negligible aging/overdue accounts.
-  - Flawless credit discipline (0 past-due counts, 0 historical defaults).
-  - Target Score: `universal_score >= 75` (`PRIME_LOW_RISK`, `APPROVED`).
-- **`RISKY_SME`** (`data/fixtures/risky_sme/`):
-  - Severe liquidity strain (Cash Ratio ≈ 0.25, Current Assets: 200k, Current Liabilities: 800k).
-  - High client concentration (>70%), frequent negative bank balances.
-  - Chronic past-due receivables, historical defaults, high debt service load.
-  - Target Score: `universal_score <= 55` (`HIGH_RISK_REJECT`, `REJECTED`).
-
-### Seeding Fixtures
-To populate the database with these profiles idempotently:
 ```bash
-python -m scripts.seed_fixtures
+./setup_ollama.sh
 ```
 
----
+**Что делает скрипт:**
+1. Проверяет наличие Ollama в системе (и предлагает установить одной кнопкой, если ее нет).
+2. Предоставляет выбор модели:
+   - `llama3.2:1b` *(рекомендуется)* — ультралегкая (~1.3 ГБ), работает быстро даже на CPU.
+   - `llama3:8b` — глубокий аналитический синтез для мощных систем с GPU/VRAM.
+   - Любая пользовательская модель.
+3. Автоматически сканирует сетевые порты и находит свободный (по умолчанию `11434`).
+4. Настраивает Ollama на прослушивание всех интерфейсов `0.0.0.0`, чтобы Docker-контейнеры могли обращаться к ней через `host.docker.internal`.
+5. Автоматически обновляет файл `.env`:
+   - `LLM_PROVIDER=ollama`
+   - `LLM_MODEL=llama3.2:1b`
+   - `OLLAMA_HOST=http://host.docker.internal:11434`
 
-## Testing
+### Важная настройка сетевой доступности Ollama (0.0.0.0)
 
-GraeaeEye features a 57-test regression shield validating contracts, business logic, and in-process orchestration:
+Если Ollama установлена как системный сервис Linux (systemd), по умолчанию она принимает подключения только с локального `127.0.0.1`. Чтобы контейнер Docker мог до нее достучаться через `host.docker.internal`, выполните:
 
 ```bash
-# Run the complete test suite
-pytest -q
+sudo mkdir -p /etc/systemd/system/ollama.service.d
+echo -e '[Service]\nEnvironment="OLLAMA_HOST=0.0.0.0:11434"' | sudo tee /etc/systemd/system/ollama.service.d/override.conf
+sudo systemctl daemon-reload
+sudo systemctl restart ollama
+```
 
-# Contract tests (18D feature vector order, P10 error envelope, status codes)
+*(Скрипт `./setup_ollama.sh` проверяет и настраивает это автоматически).*
+
+### Проверка работоспособности Ollama
+
+Для проверки готовности сервера и модели создан тест:
+
+```bash
+# Быстрая интерактивная диагностика в консоли
+python3 tests/test_ollama_server.py
+
+# Либо через pytest (если Ollama выключена, тесты чисто пропускаются как SKIPPED)
+pytest tests/test_ollama_server.py -v
+```
+
+Тест проверяет:
+- [x] Доступность HTTP API и пинг сервера (< 2 сек).
+- [x] Наличие выбранной модели в кэше Ollama.
+- [x] Реальный инференс нейросетью с замером времени ответа.
+- [x] Интеграцию с `AsyncLLMClient` приложения.
+
+### Как вернуться к режиму без нейросети
+
+Если вы хотите отключить Ollama и использовать мгновенный институциональный генератор:
+1. В `.env` очистите значение: `OLLAMA_HOST=` и укажите `LLM_PROVIDER=auto`.
+2. Перезапустите бэкенд: `docker compose restart backend`.
+
+---
+
+## Конфигурация (.env)
+
+| Переменная | По умолчанию | Описание |
+|---|---|---|
+| `APP_ENV` | `development` | Окружение приложения (`development`, `production`). |
+| `LOG_LEVEL` | `INFO` | Уровень логирования (`DEBUG`, `INFO`, `WARNING`, `ERROR`). |
+| `SECRET_KEY` | `change_me...` | Секретный ключ для подписи JWT-токенов. |
+| `POSTGRES_SERVER` | `postgres` | Адрес сервера PostgreSQL (для локального запуска `localhost`). |
+| `POSTGRES_PORT` | `5432` | Порт PostgreSQL. |
+| `POSTGRES_USER` | `postgres` | Пользователь БД. |
+| `POSTGRES_PASSWORD`| `postgres` | Пароль БД. |
+| `POSTGRES_DB` | `graeae_eye_db` | Имя базы данных. |
+| `LLM_PROVIDER` | `auto` | Провайдер синтеза: `auto`, `ollama`, `openai`, `fallback`. |
+| `LLM_MODEL` | `llama3.2:1b` | Модель для генерации меморандума (`llama3.2:1b`, `llama3:8b`, `gpt-4o-mini`). |
+| `OLLAMA_HOST` | *(пусто)* | Адрес Ollama (`http://host.docker.internal:11434` для Docker). Пусто = не-ИИ режим. |
+| `OPENAI_API_KEY` | *(пусто)* | API-ключ OpenAI (опционально, если используется OpenAI). |
+| `LLM_INFERENCE_TIMEOUT` | `300.0` | Лимит времени на ответ нейросети в секундах. |
+| `LLM_HEARTBEAT_INTERVAL`| `10.0` | Интервал отправки сообщений о статусе генерации в SSE. |
+| `BACKUP_INTERVAL_SECONDS`| `300` | Интервал создания резервных копий БД демоном. |
+| `AUTO_RESTORE_LAST_DB_BACKUP` | `false` | Если `true`, при старте Docker таблицы наполняются из последнего бэкапа. |
+
+---
+
+## Тестирование и контроль качества
+
+Система покрыта **126 автоматическими тестами**:
+
+```bash
+# Запуск полного набора тестов
+pytest -v
+
+# Тесты контрактов и валидации 18D вектора
 pytest tests/test_contracts.py -v
 
-# Integration tests (GOOD_SME vs RISKY_SME contrast, degraded mode, idempotent seeding)
-pytest tests/test_integration.py -v
+# Тесты многодокументной загрузки и целостности связей (FK)
+pytest tests/test_pipeline_multidoc.py -v
 
-# Authentication and security tests
-pytest tests/test_gate4_auth.py -v
+# Тесты парсеров CSV/XLSX с мультиязычными заголовками
+pytest tests/test_parsers_deep.py -v
 
-# Orchestration and SSE pipeline tests
-pytest tests/test_gate3_orchestration.py -v
+# Тесты модульных исполнителей LLM (Ollama SDK, HTTP, OpenAI, Fallback)
+pytest tests/test_llm_modular_executors.py -v
 
-# Static analysis
+# Тест живого сервера Ollama
+pytest tests/test_ollama_server.py -v
+
+# Проверка линтером Ruff
 ruff check src/ tests/
 ```
 
-### Continuous Integration (CI)
-GitHub Actions workflow in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) validates every pull request:
-1. **`test` Job**: Runs Ruff linting and the complete Pytest suite with zero warnings allowed.
-2. **`docker-smoke` Job**: Builds the docker container stack and verifies container health.
-
 ---
 
-## Roadmap
+## Лицензия
 
-- [x] **Phase 1: Architecture & Mock Engine (DONE)**:
-  - Canonical 18D financial feature vector definition.
-  - Strict P10 error envelopes (`{"detail": str, "code": str}`).
-  - 9 rule-based financial analysis submodules with dynamic renormalization.
-  - In-memory mock provider with synthetic telemetry and reports.
-- [x] **Phase 2: Real In-Process Integration (DONE)**:
-  - 57-method PostgreSQL Data Access Layer (DAL) with parameterized queries.
-  - Real Argon2id authentication and signed HS256 JWT session management.
-  - Multipart CSV ingestion pipeline (accounts, transactions, invoices, credit obligations, shareholders).
-  - Real orchestration wiring: Ingestion → DAL → Scoring Engine → SSE Telemetry → Report.
-  - `GOOD_SME` / `RISKY_SME` contrasting benchmark fixtures with automated seed script.
-  - 57-test regression shield + GitHub Actions CI workflow.
-- [ ] **Phase 3: Advanced Capabilities & Machine Learning (FUTURE)**:
-  - **Empirical ML Training**: Transition from expert-defined rules to supervised ML models (e.g. LightGBM, CatBoost) trained on empirical default outcomes.
-  - **Advanced Explainability**: Calibrated SHAP / Integrated Gradients on trained models.
-  - **Cash Flow Forecasting**: Time-series predictive models with confidence intervals on 30/60/90-day horizons.
-  - **Interactive Scenario Engine**: What-If stress simulations for payment delays and macroeconomic shocks.
-  - **Security & Multi-Tenancy**: CSRF protection, rate limiting, and tenant-isolated database schemas.
-  - **Frontend Interface**: Dedicated web UI with real-time SSE chart rendering.
-
----
-
-## Limitations (Honest Disclosure)
-
-In alignment with engineering integrity and transparent system positioning, the current limitations of the system are explicitly acknowledged:
-
-1. **No Trained ML Model Yet**: The current analytical pipeline uses deterministic, expert-crafted arithmetic rules. There are no weights learned from empirical training data.
-2. **No Ground-Truth Validation**: Risk score bands (`PRIME_LOW_RISK`, `MODERATE_RISK_REVIEW`, `HIGH_RISK_REJECT`) and threshold cutoffs have not yet been calibrated against historical SME default datasets or verified by external rating agencies.
-3. **Pseudo-SHAP (Not Real SHAP)**: Feature importance values and directional impacts are currently calculated using normalized heuristic distance-from-median metrics rather than true Shapley values computed over game-theoretic model predictions.
-4. **Limited Production Ingestion**: Ingestion currently handles structured CSV tables. OCR for scanned PDF bank statements, semi-structured Excel spreadsheets, and direct banking API integrations are not yet implemented.
-5. **No Frontend**: The platform currently operates strictly as a backend service accessible via REST API and Swagger UI.
-6. **Mock Mode Default**: `USE_MOCK_ENGINE` defaults to `true` in local development configurations to allow instant demonstration without an active PostgreSQL instance.
-
----
-
-## Team
-
-- **Team Lead & DevOps**: CI/CD pipelines, Docker infrastructure, architecture alignment, code review.
-- **Backend Developer**: FastAPI application, DAL implementation, PostgreSQL schema, authentication & session management.
-- **Data Engineer**: Data ingestion pipeline, file format parsing, data normalization, database fixtures.
-- **ML / Quant Engineer**: Financial submodule metrics, 18D feature vector design, rule-based scorecard algorithms, explanation heuristics.
-- **Frontend / Integration Engineer**: Contract mapping, API client integration, UI mockups, and reporting specifications.
-
----
-
-## License
-
-MIT License
+MIT License. См. [LICENSE](LICENSE).

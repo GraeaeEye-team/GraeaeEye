@@ -445,7 +445,7 @@ class UnderwritingAnalyticalPipeline:
                     llm_summary = detailed_res.text
                     synthesis_engine_tag = detailed_res.synthesis_engine
 
-                    if detailed_res.fallback_used:
+                    if detailed_res.fallback_used and detailed_res.status != "LLM_INFERENCE_SUCCESS":
                         await db.add_record_to_analysis_logs(
                             run_id=run_id,
                             severity="WARN",
@@ -455,6 +455,13 @@ class UnderwritingAnalyticalPipeline:
                                 f"({detailed_res.error_details}). Switched to structured fallback memorandum."
                             ),
                         )
+                    elif detailed_res.fallback_used:
+                        await db.add_record_to_analysis_logs(
+                            run_id=run_id,
+                            severity="INFO",
+                            stage="LLM_SYNTHESIS",
+                            message="[REPORT_BUILDER] Сформирован институциональный структурированный меморандум андеррайтера (не-ИИ режим по умолчанию).",
+                        )
                     else:
                         total_sec = round(time.perf_counter() - start_llm_time, 2)
                         char_count = len(llm_summary) if llm_summary else 0
@@ -462,7 +469,7 @@ class UnderwritingAnalyticalPipeline:
                             run_id=run_id,
                             severity="INFO",
                             stage="LLM_SYNTHESIS",
-                            message=f"[LLM_SUCCESS] Меморандум успешно сформирован за {total_sec}с ({char_count} символов).",
+                            message=f"[LLM_SUCCESS] Меморандум успешно сгенерирован нейросетью за {total_sec}с ({char_count} символов).",
                         )
                 except Exception as llm_exc:
                     logger.warning("LLM synthesis encountered error (%s). Using fallback summary.", llm_exc)
