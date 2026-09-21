@@ -24,12 +24,6 @@ from ..schemas import (
 )
 
 from ..dependencies import get_db
-from ..schemas import (
-    ErrorResponse,
-    UserLoginRequest,
-    UserRegisterRequest,
-    UserResponse,
-)
 from ...auth.security import (
     create_session_token,
     hash_password,
