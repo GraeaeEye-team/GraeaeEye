@@ -246,7 +246,38 @@ async def execute_structured_fallback(
     )
 
 
+async def execute_ollama(
+    prompt: str,
+    model: str,
+    host: Optional[str] = None,
+    timeout: Optional[float] = None,
+    **kwargs: Any,
+) -> str:
+    """
+    Unified Ollama execution strategy.
+    Attempts official Ollama Python SDK first; falls back seamlessly to raw HTTP endpoint (/api/generate).
+    """
+    try:
+        return await execute_ollama_sdk(
+            prompt=prompt,
+            model=model,
+            host=host,
+            timeout=timeout,
+            **kwargs,
+        )
+    except Exception as exc:
+        logger.debug("execute_ollama: SDK execution failed (%s), falling back to raw HTTP: %s", type(exc).__name__, exc)
+        return await execute_ollama_http(
+            prompt=prompt,
+            model=model,
+            host=host,
+            timeout=timeout,
+            **kwargs,
+        )
+
+
 EXECUTOR_REGISTRY: Dict[str, LLMExecutor] = {
+    "ollama": execute_ollama,
     "ollama_sdk": execute_ollama_sdk,
     "ollama_http": execute_ollama_http,
     "openai": execute_openai,
@@ -268,7 +299,7 @@ class AsyncLLMClient:
         timeout: Optional[float] = None,
         executor: Optional[Union[str, LLMExecutor]] = None,
     ) -> None:
-        self.ollama_host = (ollama_host or settings.ollama_host or "http://localhost:11434").rstrip("/")
+        self.ollama_host = (ollama_host or settings.ollama_host or "").rstrip("/")
         self.openai_api_key = openai_api_key if openai_api_key is not None else settings.openai_api_key
         self.model = model or settings.llm_model or "gpt-4o-mini"
         self.timeout = (
@@ -366,7 +397,7 @@ class AsyncLLMClient:
             engine_name = getattr(executor_target, "__name__", "custom_executor")
 
         target_model = self.model
-        if engine_name in ("ollama_sdk", "ollama_http") and "gpt" in target_model:
+        if engine_name in ("ollama", "ollama_sdk", "ollama_http") and "gpt" in target_model:
             target_model = "llama3:latest"
 
         engine_tag = f"{engine_name}:{target_model}"
@@ -442,8 +473,35 @@ class AsyncLLMClient:
         effective_timeout = timeout if timeout is not None else self.timeout
         errors: list[str] = []
 
-        # 1. Prioritize OpenAI API if key is present
-        if self.openai_api_key and self.openai_api_key.strip():
+        # Validate whether real AI providers are configured
+        has_real_openai_key = (
+            bool(self.openai_api_key)
+            and bool(self.openai_api_key.strip())
+            and not self.openai_api_key.strip().lower().startswith("your_api_key")
+            and self.openai_api_key.strip().lower() not in ("none", "null", "sk-xxx", "")
+        )
+        has_ollama_host = bool(self.ollama_host) and bool(self.ollama_host.strip())
+
+        # If no external AI provider configured in .env, run deterministic non-AI report builder directly
+        if not has_real_openai_key and not has_ollama_host:
+            logger.info("No AI providers configured in .env. Using deterministic institutional report builder.")
+            fallback_text = await execute_structured_fallback(
+                prompt=prompt,
+                model="none",
+                context_metadata=meta,
+            )
+            return LLMGenerationResult(
+                text=fallback_text,
+                synthesis_engine="fallback:template",
+                llm_model="none",
+                inference_time_ms=0.0,
+                fallback_used=True,
+                status="LLM_INFERENCE_SUCCESS",
+                error_details="Deterministic template builder used (no AI provider configured in .env)",
+            )
+
+        # 1. Prioritize OpenAI API if real key is present
+        if has_real_openai_key:
             start_t = time.perf_counter()
             try:
                 res = await execute_openai(
@@ -473,69 +531,70 @@ class AsyncLLMClient:
                 errors.append(err_msg)
                 logger.warning("OpenAI LLM inference failed: %s. Attempting Ollama SDK.", err_msg)
 
-        # 2. Try Ollama official SDK
-        start_t = time.perf_counter()
-        ollama_model = self.model if "gpt" not in self.model else "llama3:latest"
-        try:
-            res = await execute_ollama_sdk(
-                prompt=prompt,
-                model=ollama_model,
-                host=self.ollama_host,
-                timeout=effective_timeout,
-                context_metadata=meta,
-            )
-            elapsed_ms = (time.perf_counter() - start_t) * 1000
-            if res and res.strip():
-                logger.info(
-                    "LLM_INFERENCE_SUCCESS: Generated via Ollama SDK (%s) in %.1fms",
-                    ollama_model,
-                    elapsed_ms,
+        # 2. Try Ollama (only if host is configured)
+        if self.ollama_host and self.ollama_host.strip():
+            start_t = time.perf_counter()
+            ollama_model = self.model if "gpt" not in self.model else "llama3:latest"
+            try:
+                res = await execute_ollama_sdk(
+                    prompt=prompt,
+                    model=ollama_model,
+                    host=self.ollama_host,
+                    timeout=effective_timeout,
+                    context_metadata=meta,
                 )
-                return LLMGenerationResult(
-                    text=res.strip(),
-                    synthesis_engine=f"ollama_sdk:{ollama_model}",
-                    llm_model=ollama_model,
-                    inference_time_ms=round(elapsed_ms, 2),
-                    fallback_used=False,
-                    status="LLM_INFERENCE_SUCCESS",
-                )
-        except Exception as exc:
-            err_msg = f"Ollama SDK ({type(exc).__name__}: {exc})"
-            errors.append(err_msg)
-            logger.warning("Ollama SDK failed: %s. Attempting Ollama HTTP.", err_msg)
+                elapsed_ms = (time.perf_counter() - start_t) * 1000
+                if res and res.strip():
+                    logger.info(
+                        "LLM_INFERENCE_SUCCESS: Generated via Ollama SDK (%s) in %.1fms",
+                        ollama_model,
+                        elapsed_ms,
+                    )
+                    return LLMGenerationResult(
+                        text=res.strip(),
+                        synthesis_engine=f"ollama_sdk:{ollama_model}",
+                        llm_model=ollama_model,
+                        inference_time_ms=round(elapsed_ms, 2),
+                        fallback_used=False,
+                        status="LLM_INFERENCE_SUCCESS",
+                    )
+            except Exception as exc:
+                err_msg = f"Ollama SDK ({type(exc).__name__}: {exc})"
+                errors.append(err_msg)
+                logger.warning("Ollama SDK failed: %s. Attempting Ollama HTTP.", err_msg)
 
-        # 3. Try Ollama HTTP endpoint as fallback
-        start_t = time.perf_counter()
-        try:
-            res = await execute_ollama_http(
-                prompt=prompt,
-                model=ollama_model,
-                host=self.ollama_host,
-                timeout=effective_timeout,
-                context_metadata=meta,
-            )
-            elapsed_ms = (time.perf_counter() - start_t) * 1000
-            if res and res.strip():
-                logger.info(
-                    "LLM_INFERENCE_SUCCESS: Generated via Ollama HTTP (%s) in %.1fms",
-                    ollama_model,
-                    elapsed_ms,
+            # 3. Try Ollama HTTP endpoint as fallback
+            start_t = time.perf_counter()
+            try:
+                res = await execute_ollama_http(
+                    prompt=prompt,
+                    model=ollama_model,
+                    host=self.ollama_host,
+                    timeout=effective_timeout,
+                    context_metadata=meta,
                 )
-                return LLMGenerationResult(
-                    text=res.strip(),
-                    synthesis_engine=f"ollama_http:{ollama_model}",
-                    llm_model=ollama_model,
-                    inference_time_ms=round(elapsed_ms, 2),
-                    fallback_used=False,
-                    status="LLM_INFERENCE_SUCCESS",
+                elapsed_ms = (time.perf_counter() - start_t) * 1000
+                if res and res.strip():
+                    logger.info(
+                        "LLM_INFERENCE_SUCCESS: Generated via Ollama HTTP (%s) in %.1fms",
+                        ollama_model,
+                        elapsed_ms,
+                    )
+                    return LLMGenerationResult(
+                        text=res.strip(),
+                        synthesis_engine=f"ollama_http:{ollama_model}",
+                        llm_model=ollama_model,
+                        inference_time_ms=round(elapsed_ms, 2),
+                        fallback_used=False,
+                        status="LLM_INFERENCE_SUCCESS",
+                    )
+            except Exception as exc:
+                err_msg = f"Ollama HTTP ({type(exc).__name__}: {exc})"
+                errors.append(err_msg)
+                logger.warning(
+                    "LLM_FALLBACK_TRIGGERED: Ollama unreachable or timed out (%s). Using structured template.",
+                    err_msg,
                 )
-        except Exception as exc:
-            err_msg = f"Ollama HTTP ({type(exc).__name__}: {exc})"
-            errors.append(err_msg)
-            logger.warning(
-                "LLM_FALLBACK_TRIGGERED: Ollama unreachable or timed out (%s). Using structured template.",
-                err_msg,
-            )
 
         # 4. Deterministic Structured Fallback Memorandum
         fallback_text = await execute_structured_fallback(
