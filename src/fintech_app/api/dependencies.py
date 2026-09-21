@@ -34,19 +34,13 @@ MOCK_USER_PRINCIPAL = CurrentUser(
 def get_db_connection() -> Generator[Any, None, None]:
     """Database connection generator yielding active database instance."""
     if not settings.use_mock_engine:
-        try:
-            from fintech_app.db.connection import Database
+        from ..db.connection import Database
 
-            yield Database.get_instance()
-            return
-        except Exception:
-            pass
-    try:
-        from fintech_app.db.mock_connection import MockDatabase
+        yield Database.get_instance()
+        return
+    from ..db.mock_connection import MockDatabase
 
-        yield MockDatabase.get_instance()
-    except Exception:
-        yield None
+    yield MockDatabase.get_instance()
 
 
 async def get_db(request: Request) -> AsyncGenerator[Optional[object], None]:
@@ -60,21 +54,14 @@ async def get_db(request: Request) -> AsyncGenerator[Optional[object], None]:
         return
 
     db = None
-    try:
-        from fintech_app.main import db_pool
+    from ..main import db_pool
 
-        db = db_pool
-    except Exception:
-        db = None
+    db = db_pool
 
     if db is None and not settings.use_mock_engine:
-        try:
-            from fintech_app.db.connection import Database
+        from ..db.connection import Database
 
-            db = Database.get_instance()
-        except Exception as exc:
-            logger.warning("Could not acquire Database instance in get_db: %s", exc)
-            db = None
+        db = Database.get_instance()
 
     yield db
 
@@ -109,12 +96,9 @@ async def get_current_user(request: Request) -> CurrentUser:
         db = getattr(request.app.state, "db", None)
 
     if db is None:
-        try:
-            from fintech_app.main import db_pool
+        from ..main import db_pool
 
-            db = db_pool
-        except Exception:
-            db = None
+        db = db_pool
 
     # Fallback to mock principal in mock mode or when database is unavailable
     if db is None or settings.use_mock_engine:
