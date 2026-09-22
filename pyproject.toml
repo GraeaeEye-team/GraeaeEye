@@ -13,9 +13,34 @@ dependencies = [
     "uvicorn>=0.28.0",
     "psycopg[binary,pool]>=3.1.18",
     "pandas>=2.2.0",
-    "pydantic>=2.6.0"
+    "pydantic>=2.6.0",
+    "aiofiles~=23.2.0"
 ]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src", "."]
+filterwarnings = [
+    "ignore:.*Please use `import python_multipart` instead.*:PendingDeprecationWarning",
+    "ignore:.*The anyio.abc.BlockingPortal alias is deprecated.*:DeprecationWarning",
+    "ignore:.*'crypt' is deprecated and slated for removal.*:DeprecationWarning",
+    "ignore:.*Accessing argon2.__version__ is deprecated.*:DeprecationWarning",
+    "ignore::DeprecationWarning:passlib.*:",
+    "ignore::DeprecationWarning:crypt:",
+    "ignore::DeprecationWarning:anyio.*:",
+    "ignore::DeprecationWarning:starlette.*:",
+    "ignore::PendingDeprecationWarning:starlette.*:",
+    "ignore::PendingDeprecationWarning:multipart.*:",
+    "ignore::starlette.exceptions.StarletteDeprecationWarning:",
+]
+
 

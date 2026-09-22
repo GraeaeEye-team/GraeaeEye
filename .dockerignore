@@ -1,0 +1,38 @@
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.ollama/
+
+# Python cache & bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# Database dumps & temporary files
+*.dump
+src/fintech_app/db/backups/*.dump
+
+# Documentation
+docs/
+*.md
+
+# IDE & OS
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+

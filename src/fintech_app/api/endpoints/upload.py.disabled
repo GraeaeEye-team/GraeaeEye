@@ -1,0 +1,13 @@
+# ARCHIVED: stub from Phase 0 cash-flow concept, not used in Phase 1-2
+# Kept for historical reference only. Not registered in router.
+
+from fastapi import APIRouter, File, UploadFile
+
+router = APIRouter()
+
+
+@router.post("/upload", summary="Загрузить выписку")
+async def upload_financial_statement(file: UploadFile = File(...)):
+    """Принимает файл выписки и производит первичный автоматический парсинг."""
+    return {"filename": file.filename, "status": "processed"}
+

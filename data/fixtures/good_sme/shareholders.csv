@@ -1,0 +1,6 @@
+shareholder_name,equity_percentage,is_management_member
+Elena Popescu,20.00,False
+Ion Ionescu,20.00,False
+Mihai Radu,20.00,True
+Andrei Dumitru,20.00,True
+Cristina Vasile,20.00,False

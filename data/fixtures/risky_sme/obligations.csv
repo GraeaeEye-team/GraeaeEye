@@ -1,0 +1,4 @@
+lender_name,facility_type,principal_amount,outstanding_balance,monthly_payment,past_due_30d_count,past_due_90d_count,historical_defaults_count
+Banca de Finante,TERM_LOAN,800000.00,750000.00,35000.00,3,1,0
+Credit Rapid,CREDIT_LINE,400000.00,380000.00,20000.00,2,1,0
+Microinvest,MICROLOAN,150000.00,140000.00,10000.00,0,0,0

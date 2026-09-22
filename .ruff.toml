@@ -1,0 +1,17 @@
+line-length = 120
+
+[lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # Line too long (cosmetic, 116 violations in legacy code)
+    "E741",  # Ambiguous variable name (cosmetic, 8 violations)
+]
+
+[lint.per-file-ignores]
+"src/fintech_app/ingestion/*" = ["F401"]  # Unused imports in @ozzyrastamouse's PR #30 (not our scope)
+"src/fintech_app/api/*" = ["F401"]        # Preexisting unused imports in API layer
+"src/fintech_app/shared/*" = ["F401"]     # Preexisting unused imports in shared utilities
+"tests/test_ingestion.py" = ["F401"]      # Legacy ingestion tests
+"tests/test_contract_mapping.py" = ["F401"]  # Legacy contract mapping tests
+"tests/test_gate4_auth.py" = ["F401"]     # Existing Gate 4 auth tests
+"tests/preflight_audit.py" = ["F401", "W292"]  # Legacy preflight audit script

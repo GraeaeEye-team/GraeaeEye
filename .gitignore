@@ -1,7 +1,10 @@
+src/fintech_app/db/backups/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
 *$py.class
+.serena/
 
 # C extensions
 *.so
@@ -216,3 +219,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Local Ollama weights cache
+.ollama/
+
+*.dump
