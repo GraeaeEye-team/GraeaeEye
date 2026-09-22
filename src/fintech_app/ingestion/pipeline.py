@@ -292,21 +292,19 @@ class IngestionPipeline:
                     except Exception as ba_err:
                         logger.warning("Failed to ensure bank account %s: %s", account_id, ba_err)
 
-                # 4c. Гарантируем наличие акционеров (shareholders)
+                # 4c. Регистрация акционеров (shareholders) только при наличии явных данных в метаданных/документах
                 if hasattr(self.db, "add_record_to_shareholders") and hasattr(self.db, "get_records_from_shareholders"):
                     try:
                         sh_check = await self.db.get_records_from_shareholders(
                             find_only_first=True, business_id=business_id
                         )
-                        if not (sh_check.success and sh_check.data):
-                            sh_name = (
-                                metadata.get("founder_name") or f"Owner of {metadata.get('company_name', 'Enterprise')}"
-                            )
+                        # Создаем запись об акционере только если он явно передан в метаданных (не синтезируем фиктивного владельца)
+                        if not (sh_check.success and sh_check.data) and metadata.get("founder_name"):
                             await self.db.add_record_to_shareholders(
                                 business_id=business_id,
-                                shareholder_name=sh_name,
-                                equity_percentage=Decimal("100.00"),
-                                is_management_member=True,
+                                shareholder_name=str(metadata["founder_name"]),
+                                equity_percentage=Decimal(str(metadata.get("founder_equity", "100.00"))),
+                                is_management_member=bool(metadata.get("founder_is_management", True)),
                             )
                     except Exception as sh_err:
                         logger.warning("Failed to ensure shareholder for %s: %s", business_id, sh_err)

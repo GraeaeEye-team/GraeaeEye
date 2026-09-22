@@ -46,6 +46,9 @@ services:
       - OLLAMA_HOST=${OLLAMA_HOST:-}
       - LLM_MODEL=${LLM_MODEL:-llama3.2:1b}
       - LLM_PROVIDER=${LLM_PROVIDER:-auto}
+      - AUTO_RESTORE_LAST_DB_BACKUP=${AUTO_RESTORE_LAST_DB_BACKUP:-false}
+      - FORCE_RESTORE=${FORCE_RESTORE:-false}
+      - BACKUP_DIR=${BACKUP_DIR:-/app/src/fintech_app/db/backups}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:

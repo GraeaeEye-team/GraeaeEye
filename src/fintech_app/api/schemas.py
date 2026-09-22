@@ -314,6 +314,31 @@ class AnalysisReportResponse(BaseModel):
         return self.run_id
 
 
+class AnalysisRunSummaryResponse(BaseModel):
+    """Compact summary of an analysis run for history ledger."""
+
+    run_id: UUID
+    company_name: str
+    tax_id: str
+    sector_code: str
+    status: AnalysisStatus
+    universal_score: Optional[float] = None
+    probability_of_default: Optional[float] = None
+    verdict_category: Optional[str] = None
+    recommendation: Optional[str] = None
+    created_at: datetime
+    completed_at: Optional[datetime] = None
+
+
+class AnalysisHistoryResponse(BaseModel):
+    """Paginated list of user analysis runs."""
+
+    items: List[AnalysisRunSummaryResponse]
+    total: int
+    limit: int
+    offset: int
+
+
 class HealthResponse(BaseModel):
     """System health check response."""
 

@@ -49,11 +49,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             logger.info("Injected database instance opened successfully.")
         else:
             try:
-                from .db.connection import Database
+                from fintech_app.db.connection import Database
+                from fintech_app.db.restore import auto_restore_last_backup_if_configured
 
                 real_db = Database.get_instance()
                 await real_db.open(wait=True, timeout=1.5)
-                await real_db.apply_schema_if_needed()
+
+                # If auto-restore is enabled and database is empty, restore directly from the latest dump
+                restored = await auto_restore_last_backup_if_configured()
+                if not restored:
+                    await real_db.apply_schema_if_needed()
+
                 db_pool = real_db
                 app.state.db = db_pool
                 logger.info("Real PostgreSQL Database connected and verified successfully.")

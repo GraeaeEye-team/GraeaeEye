@@ -84,6 +84,8 @@ async def get_current_user(request: Request) -> CurrentUser:
                 session_token = parts[1]
             elif len(parts) == 1:
                 session_token = parts[0]
+    if not session_token:
+        session_token = request.query_params.get("token")
 
     if not session_token:
         raise HTTPException(
@@ -100,8 +102,8 @@ async def get_current_user(request: Request) -> CurrentUser:
 
         db = db_pool
 
-    # Fallback to mock principal in mock mode or when database is unavailable
-    if db is None or settings.use_mock_engine:
+    # Handle fixed mock token fallback in mock mode or when database is unavailable
+    if (db is None or settings.use_mock_engine) and session_token == "mock-session-token-phase1-secret":
         return MOCK_USER_PRINCIPAL
 
     # Validate JWT session token
@@ -133,6 +135,15 @@ async def get_current_user(request: Request) -> CurrentUser:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail={"detail": "Malformed user identifier in session token.", "code": "UNAUTHORIZED"},
+        )
+
+    # In mock mode or when database is unavailable, return principal from decoded token
+    if db is None or settings.use_mock_engine:
+        return CurrentUser(
+            user_id=user_uuid,
+            email=str(payload.get("email", "analyst@graeae.eye")),
+            full_name=str(payload.get("full_name") or payload.get("name") or payload.get("email", "Graeae Analyst")),
+            role=str(payload.get("role", "ANALYST")),
         )
 
     # Query DAL users table to verify user existence and active status

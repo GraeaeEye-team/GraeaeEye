@@ -1,7 +1,8 @@
 /**
  * GraeaeEye Smart Credit Engine - Single Page Architecture Frontend Controller
- * Manages theme preferences, session authentication, file intake wizard,
- * real-time SSE stream telemetry (/api/v1/analysis/stream), and final dossier dashboard.
+ * Aligned with Web Interface & Orchestration Layer Technical Architecture & Specification v2.0.
+ * Manages tenant isolation, workspace resets, report history ledger, 9D submodules diagnostics,
+ * and canonical 18D financial indices.
  */
 
 class ConfigSingleton {
@@ -45,6 +46,181 @@ const config = new ConfigSingleton();
 
 let currentUser = null;
 let activeEventSource = null;
+
+// =========================================================================
+// 0. RUSSIAN LOCALIZATION & METADATA DICTIONARIES
+// =========================================================================
+
+const SUBMODULE_DICTIONARY_RU = {
+	"OS": {
+		title: "Структура собственности и корпоративное управление (OS)",
+		code: "OS_4_1",
+		description: "Оценка концентрации долей у основателей, прозрачности бенефициаров и независимости менеджмента.",
+		verdicts: {
+			"CONCENTRATED_OWNERSHIP": "Высокая концентрация долей у ключевых основателей",
+			"BALANCED_OWNERSHIP": "Сбалансированная структура акционеров",
+			"KEY_PERSON_RISK": "Концентрация управления у основателя (Риск ключевой фигуры)",
+			"DATA_ABSENT": "Данные о собственниках не предоставлены (расчет пропущен без штрафа)",
+			"OPAQUE_STRUCTURE": "Непрозрачная структура бенефициаров",
+			"DEFAULT": "Оценка завершена"
+		},
+		index_labels: {
+			"ownership_dispersion_index": "Индекс дисперсии владения",
+			"governance_independence_index": "Индекс независимости корпоративного управления"
+		}
+	},
+	"WPR": {
+		title: "Цифровая репутация и юридическая чистота (WPR)",
+		code: "WPR_4_2",
+		description: "Проверка судебных реестров, санкционных списков, арбитражных производств и тональности в сети.",
+		verdicts: {
+			"LEGAL_INTEGRITY_CONFIRMED": "Юридическая чистота подтверждена (отсутствие арестов и санкций)",
+			"LEGAL_RISKS_DETECTED": "Обнаружены открытые судебные претензии",
+			"DEFAULT": "Репутационный аудит пройден"
+		},
+		index_labels: {
+			"legal_cleanliness_index": "Индекс юридической чистоты",
+			"public_reputation_index": "Индекс публичной деловой репутации"
+		}
+	},
+	"MSR": {
+		title: "Макроэкономический и отраслевой риск (MSR)",
+		code: "MSR_4_3",
+		description: "Оценка макроэкономической конъюнктуры, устойчивости отрасли и влияния валютно-инфляционных факторов.",
+		verdicts: {
+			"STABLE_SECTOR": "Стабильная динамика отраслевого сегмента",
+			"VOLATILE_SECTOR": "Повышенная волатильность рынка",
+			"DEFAULT": "Отраслевой анализ выполнен"
+		},
+		index_labels: {
+			"sector_vitality_index": "Индекс витальности и динамики сектора"
+		}
+	},
+	"CD": {
+		title: "Концентрация клиентской базы (CD)",
+		code: "CD_4_4",
+		description: "Анализ риска потери ключевых заказчиков, доли ТОП-клиента в выручке и диверсификации портфеля счетов.",
+		verdicts: {
+			"MODERATE_CONCENTRATION": "Умеренная зависимость от ключевых покупателей",
+			"HIGH_CLIENT_DEPENDENCY": "Критическая зависимость от якорного клиента",
+			"WELL_DIVERSIFIED": "Высокая диверсификация клиентского портфеля",
+			"DEFAULT": "Оценка диверсификации клиентской базы"
+		},
+		index_labels: {
+			"client_diversification_index": "Индекс диверсификации клиентской базы",
+			"top_client_exposure_index": "Индекс концентрации ТОП-клиента"
+		}
+	},
+	"SD": {
+		title: "Зависимость от поставщиков (SD)",
+		code: "SD_4_5",
+		description: "Анализ непрерывности цепочки поставок, концентрации закупок и риска срыва снабжения.",
+		verdicts: {
+			"DIVERSIFIED_SUPPLY_CHAIN": "Диверсифицированная цепочка поставщиков",
+			"MONO_SUPPLIER_RISK": "Риск моно-поставщика сырья",
+			"DEFAULT": "Анализ цепочки поставок завершен"
+		},
+		index_labels: {
+			"supplier_diversification_index": "Индекс диверсификации базы поставщиков",
+			"supply_chain_robustness_index": "Индекс устойчивости цепочки поставок"
+		}
+	},
+	"ICR": {
+		title: "Операционная ликвидность и покрытие долга (ICR)",
+		code: "ICR_4_6",
+		description: "Коэффициент покрытия процентных расходов и достаточность операционного денежного потока.",
+		verdicts: {
+			"PRIME_COVERAGE": "Высокое покрытие процентных выплат (> 3.0x)",
+			"ADEQUATE_COVERAGE": "Достаточный запас покрытия обязательств",
+			"CRITICAL_ILLIQUIDITY": "Дефицит ликвидности для обслуживания процентов",
+			"DEFAULT": "Расчет покрытия долга"
+		},
+		index_labels: {
+			"interest_coverage_ratio_index": "Индекс покрытия процентных расходов (ICR)",
+			"operating_cash_liquidity_index": "Индекс операционной ликвидности"
+		}
+	},
+	"CFS": {
+		title: "Стабильность и волатильность денежного потока (CFS)",
+		code: "CFS_4_7",
+		description: "Оценка ритмичности поступлений на расчетные счета, коэффициента вариации чистого денежного потока.",
+		verdicts: {
+			"STABLE_INFLOWS": "Ритмичные и предсказуемые денежные притоки",
+			"SEASONAL_VARIATION": "Выраженная сезонность поступлений выручки",
+			"ERRATIC_FLOWS": "Высокая хаотичность денежных потоков",
+			"DEFAULT": "Анализ кассовых разрывов"
+		},
+		index_labels: {
+			"net_cash_flow_stability_index": "Индекс стабильности чистого денежного потока",
+			"cash_inflow_rhythmicity_index": "Индекс ритмичности притоков на счета",
+			"operating_cushion_index": "Индекс подушки операционной ликвидности"
+		}
+	},
+	"RQ": {
+		title: "Качество дебиторской задолженности (RQ)",
+		code: "RQ_4_8",
+		description: "Оборачиваемость коммерческой дебиторской задолженности, средний срок инкассации (DSO) и дисциплина оплаты.",
+		verdicts: {
+			"PROMPT_COLLECTIONS": "Своевременная инкассация дебиторской задолженности",
+			"DSO_EXTENDED": "Затягивание сроков расчетов покупателями",
+			"DEFAULT": "Оценка платежной дисциплины покупателей"
+		},
+		index_labels: {
+			"receivables_safety_index": "Индекс надежности дебиторского портфеля",
+			"client_payment_discipline_index": "Индекс платежной дисциплины контрагентов"
+		}
+	},
+	"ICDL": {
+		title: "Кредитная дисциплина и долговая нагрузка (ICDL)",
+		code: "ICDL_4_9",
+		description: "История погашения кредитов, просрочки (30+/90+ дней), долговой левередж и покрытие долга (DSCR).",
+		verdicts: {
+			"PRIME_CREDIT": "Безупречная кредитная история без дефолтов",
+			"MODERATE_LEVERAGE": "Умеренная кредитная нагрузка",
+			"OVERLEVERAGED_DELINQUENT": "Критическая долговая нагрузка или просрочки",
+			"DEFAULT": "Оценка совокупной долговой нагрузки"
+		},
+		index_labels: {
+			"debt_repayment_discipline_index": "Индекс платежной дисциплины по кредитам",
+			"debt_service_coverage_index": "Индекс обслуживания совокупного долга (DSCR)",
+			"solvency_leverage_index": "Индекс платежеспособности и финансового левереджа"
+		}
+	}
+};
+
+const CANONICAL_18D_METADATA_RU = [
+	{ key: "ownership_dispersion_index", module: "OS", title: "Индекс дисперсии владения", desc: "Распределение долей капитала; отсутствие монопольного контроля одного владельца." },
+	{ key: "governance_independence_index", module: "OS", title: "Индекс независимости управления", desc: "Независимость менеджмента от персональных решений собственников." },
+	{ key: "legal_cleanliness_index", module: "WPR", title: "Индекс юридической чистоты", desc: "Отсутствие открытых исполнительных производств, налоговых арестов и судебных исков." },
+	{ key: "public_reputation_index", module: "WPR", title: "Индекс публичной деловой репутации", desc: "Тональность упоминаний компании в деловых СМИ и отсутствие компрометирующих связей." },
+	{ key: "sector_vitality_index", module: "MSR", title: "Индекс динамики сектора (NACE)", desc: "Макроэкономическая конъюнктура и темпы роста выручки предприятий отрасли." },
+	{ key: "client_diversification_index", module: "CD", title: "Индекс диверсификации клиентов", desc: "Равномерность распределения клиентского портфеля по объему выставленных счетов." },
+	{ key: "top_client_exposure_index", module: "CD", title: "Индекс концентрации ТОП-клиента", desc: "Доля крупнейшего покупателя в совокупной выручке и дебиторской задолженности." },
+	{ key: "supplier_diversification_index", module: "SD", title: "Индекс диверсификации поставщиков", desc: "Отсутствие моно-зависимости от единственного поставщика ключевого сырья или услуг." },
+	{ key: "supply_chain_robustness_index", module: "SD", title: "Индекс устойчивости цепочки поставок", desc: "Надежность и ритмичность снабжения операционного цикла сырьем." },
+	{ key: "interest_coverage_ratio_index", module: "ICR", title: "Коэффициент покрытия процентов (ICR)", desc: "Отношение операционного денежного потока к объему обязательных процентных выплат." },
+	{ key: "operating_cash_liquidity_index", module: "ICR", title: "Индекс операционной ликвидности", desc: "Достаточность доступного денежного остатка для финансирования текущих затрат." },
+	{ key: "net_cash_flow_stability_index", module: "CFS", title: "Индекс стабильности чистого денежного потока", desc: "Коэффициент вариации ежемесячных сальдо чистого операционного денежного потока." },
+	{ key: "cash_inflow_rhythmicity_index", module: "CFS", title: "Индекс ритмичности поступлений выручки", desc: "Регулярность поступления денежных средств на расчетные счета в течение месяца." },
+	{ key: "operating_cushion_index", module: "CFS", title: "Индекс финансовой подушки безопасности", desc: "Период покрытия фиксированных затрат за счет неснижаемого остатка денежных средств (в днях)." },
+	{ key: "receivables_safety_index", module: "RQ", title: "Индекс надежности дебиторской задолженности", desc: "Доля просроченных счетов-фактур в совокупном портфеле выставленной дебиторки." },
+	{ key: "client_payment_discipline_index", module: "RQ", title: "Индекс платежной дисциплины покупателей", desc: "Средний период фактической оплаты относительно контрактного срока (DSO)." },
+	{ key: "debt_repayment_discipline_index", module: "ICDL", title: "Индекс платежной дисциплины по кредитам", desc: "Отсутствие фактов просрочки кредитных траншей (30+, 60+, 90+ дней) в кредитной истории." },
+	{ key: "debt_service_coverage_index", module: "ICDL", title: "Коэффициент обслуживания долга (DSCR)", desc: "Способность операционной прибыли предприятия покрывать выплаты долга и процентов." }
+];
+
+const VERDICT_TRANSLATIONS = {
+	"PRIME_LOW_RISK": "Премиальный заемщик (Минимальный риск)",
+	"MODERATE_RISK_WATCHLIST": "Умеренный риск (Мониторинг)",
+	"HIGH_RISK_REJECT": "Высокий риск (Отказ)",
+	"APPROVED": "ОДОБРЕНО КРЕДИТНЫМ КОМИТЕТОМ",
+	"CONDITIONAL": "ОДОБРЕНО С ОБЕСПЕЧЕНИЕМ / УСЛОВИЯМИ",
+	"REJECTED": "ОТКАЗ В ПРЕДОСТАВЛЕНИИ ЛИМИТА",
+	"DEFERRED": "ОТЛОЖЕНО ДЛЯ ДОПОЛНИТЕЛЬНОГО АУДИТА",
+	"DATA_ABSENT": "Данные не предоставлены (расчет пропущен без штрафа)",
+	"SKIPPED": "Субмодуль пропущен",
+	"KEY_PERSON_RISK": "Концентрация управления (Риск ключевой фигуры)"
+};
 
 // =========================================================================
 // 1. SYSTEM HEALTH & THEME CONTROLS
@@ -103,7 +279,7 @@ function restore_theme() {
 }
 
 // =========================================================================
-// 2. AUTHENTICATION CONTROLS
+// 2. AUTHENTICATION & MULTI-TENANT ISOLATION
 // =========================================================================
 
 function update_auth_ui() {
@@ -129,6 +305,73 @@ function update_auth_ui() {
 		if (loggedInBlock) loggedInBlock.style.display = "none";
 		if (workspace) workspace.style.display = "none";
 	}
+}
+
+function reset_workspace(full = false) {
+	if (activeEventSource) {
+		activeEventSource.close();
+		activeEventSource = null;
+	}
+
+	const telemetrySection = document.getElementById("telemetry-section");
+	if (telemetrySection) telemetrySection.style.display = "none";
+
+	const reportSection = document.getElementById("report-section");
+	if (reportSection) reportSection.style.display = "none";
+
+	clear_terminal();
+
+	const fill = document.getElementById("pipeline-progress-bar");
+	if (fill) {
+		fill.style.width = "5%";
+		fill.innerText = "5%";
+	}
+
+	const stages = document.querySelectorAll(".stage-tag");
+	stages.forEach(s => s.classList.remove("active"));
+	const q = document.getElementById("st-queued");
+	if (q) q.classList.add("active");
+
+	const badges = document.querySelectorAll(".submodule-badge");
+	badges.forEach(b => {
+		b.className = "submodule-badge";
+		const stateSpan = b.querySelector(".sm-state");
+		if (stateSpan) stateSpan.innerText = "PENDING";
+	});
+
+	const runBadge = document.getElementById("run-status-badge");
+	if (runBadge) {
+		runBadge.className = "badge";
+		runBadge.innerText = "PROCESSING";
+	}
+
+	const btn = document.getElementById("btn-start-analysis");
+	if (btn) {
+		btn.disabled = false;
+		btn.innerText = "🚀 Start Multi-Document Risk Analysis";
+	}
+
+	const wizardErr = document.getElementById("wizard-error");
+	if (wizardErr) wizardErr.innerText = "";
+
+	if (full) {
+		const form = document.getElementById("analysis-form");
+		if (form) form.reset();
+		["name-statement", "name-invoices", "name-credits"].forEach(id => {
+			const el = document.getElementById(id);
+			if (el) {
+				el.innerText = "No file chosen";
+				el.classList.remove("file-selected");
+			}
+		});
+	}
+}
+
+function reset_workspace_for_new_analysis() {
+	reset_workspace(false);
+	switch_tab("analysis");
+	const wizard = document.getElementById("wizard-section");
+	if (wizard) wizard.scrollIntoView({ behavior: "smooth" });
 }
 
 function init_auth() {
@@ -158,7 +401,9 @@ function init_auth() {
 
 				currentUser = data;
 				sessionStorage.setItem("user", JSON.stringify(data));
+				reset_workspace(true);
 				update_auth_ui();
+				load_history();
 			} catch (err) {
 				if (loginError) loginError.innerText = "Network error connecting to auth server.";
 			}
@@ -192,7 +437,9 @@ function init_auth() {
 
 				currentUser = data;
 				sessionStorage.setItem("user", JSON.stringify(data));
+				reset_workspace(true);
 				update_auth_ui();
+				load_history();
 			} catch (err) {
 				if (registerError) registerError.innerText = "Network error connecting to auth server.";
 			}
@@ -205,6 +452,7 @@ function init_auth() {
 			e.preventDefault();
 			currentUser = null;
 			sessionStorage.removeItem("user");
+			reset_workspace(true);
 			update_auth_ui();
 		});
 	}
@@ -216,14 +464,105 @@ function init_auth() {
 		} catch {}
 	}
 	update_auth_ui();
+	if (currentUser) {
+		load_history();
+	}
 }
 
 // =========================================================================
-// 3. MULTI-DOCUMENT INGESTION WIZARD
+// 3. WORKSPACE TABS & HISTORY LEDGER
+// =========================================================================
+
+function switch_tab(tabName) {
+	const btnAnalysis = document.getElementById("tab-btn-analysis");
+	const btnHistory = document.getElementById("tab-btn-history");
+	const paneAnalysis = document.getElementById("analysis-tab-pane");
+	const paneHistory = document.getElementById("history-tab-pane");
+
+	if (tabName === "analysis") {
+		if (btnAnalysis) btnAnalysis.classList.add("active");
+		if (btnHistory) btnHistory.classList.remove("active");
+		if (paneAnalysis) paneAnalysis.style.display = "block";
+		if (paneHistory) paneHistory.style.display = "none";
+	} else if (tabName === "history") {
+		if (btnAnalysis) btnAnalysis.classList.remove("active");
+		if (btnHistory) btnHistory.classList.add("active");
+		if (paneAnalysis) paneAnalysis.style.display = "none";
+		if (paneHistory) paneHistory.style.display = "block";
+		load_history();
+	}
+}
+
+async function load_history() {
+	const tableBody = document.getElementById("history-table-body");
+	if (!tableBody) return;
+
+	const headers = {};
+	if (currentUser && currentUser.access_token) {
+		headers["Authorization"] = `Bearer ${currentUser.access_token}`;
+	}
+
+	try {
+		const response = await fetch("/api/v1/analysis/history?limit=50", { headers });
+		if (!response.ok) {
+			tableBody.innerHTML = `<tr><td colspan="8" class="text-center">Не удалось загрузить историю анализов (${response.status})</td></tr>`;
+			return;
+		}
+
+		const data = await response.json();
+		const items = data.items || [];
+
+		if (items.length === 0) {
+			tableBody.innerHTML = `<tr><td colspan="8" class="text-center">В вашей истории пока нет проведенных анализов. Перейдите во вкладку "Новый экспресс-анализ" для запуска.</td></tr>`;
+			return;
+		}
+
+		tableBody.innerHTML = items.map(run => {
+			const dateStr = run.created_at ? new Date(run.created_at).toLocaleString("ru-RU") : "--";
+			const scoreStr = run.universal_score != null ? `${Number(run.universal_score).toFixed(1)} / 100` : "--";
+
+			let statusBadgeClass = "badge-info";
+			if (run.status === "COMPLETED") statusBadgeClass = "badge-success";
+			else if (run.status === "FAILED") statusBadgeClass = "badge-danger";
+			else if (run.status === "PROCESSING" || run.status === "QUEUED") statusBadgeClass = "badge-warning";
+
+			const verdictRu = run.verdict_category ? (VERDICT_TRANSLATIONS[run.verdict_category] || run.verdict_category) : "--";
+			const recRu = run.recommendation ? (VERDICT_TRANSLATIONS[run.recommendation] || run.recommendation) : "--";
+
+			return `
+				<tr>
+					<td><small>${dateStr}</small></td>
+					<td><strong>${run.company_name}</strong></td>
+					<td><code>${run.tax_id}</code></td>
+					<td><span class="badge">${run.sector_code}</span></td>
+					<td><span class="badge ${statusBadgeClass}">${run.status}</span></td>
+					<td><strong>${scoreStr}</strong></td>
+					<td><small>${recRu}</small></td>
+					<td>
+						<button class="btn btn-sm btn-primary" onclick="open_report_from_history('${run.run_id}')">
+							Открыть досье
+						</button>
+					</td>
+				</tr>
+			`;
+		}).join("");
+
+	} catch (err) {
+		console.error("Failed to load history ledger:", err);
+		tableBody.innerHTML = `<tr><td colspan="8" class="text-center">Ошибка соединения при загрузке реестра.</td></tr>`;
+	}
+}
+
+function open_report_from_history(runId) {
+	switch_tab("analysis");
+	fetch_and_render_report(runId);
+}
+
+// =========================================================================
+// 4. MULTI-DOCUMENT INGESTION WIZARD
 // =========================================================================
 
 function init_wizard() {
-	// Setup file input indicators
 	const setupFileInput = (inputId, displayId) => {
 		const input = document.getElementById(inputId);
 		const display = document.getElementById(displayId);
@@ -262,7 +601,7 @@ function init_wizard() {
 			const creditsFile = document.getElementById("file-credits").files[0];
 
 			if (!statementFile) {
-				if (wizardError) wizardError.innerText = "Bank statement file is required for cashflow analysis.";
+				if (wizardError) wizardError.innerText = "Файл банковской выписки (Bank Statement) обязателен для расчета денежного потока.";
 				return;
 			}
 
@@ -282,7 +621,7 @@ function init_wizard() {
 			const btn = document.getElementById("btn-start-analysis");
 			if (btn) {
 				btn.disabled = true;
-				btn.innerText = "Dispatching pipeline...";
+				btn.innerText = "Запуск аналитического пайплайна...";
 			}
 
 			try {
@@ -294,7 +633,7 @@ function init_wizard() {
 
 				const data = await response.json();
 				if (!response.ok) {
-					if (wizardError) wizardError.innerText = data.detail || "Failed to start analysis.";
+					if (wizardError) wizardError.innerText = data.detail || "Ошибка при запуске расчета.";
 					if (btn) {
 						btn.disabled = false;
 						btn.innerText = "🚀 Start Multi-Document Risk Analysis";
@@ -305,7 +644,7 @@ function init_wizard() {
 				const runId = data.run_id;
 				start_telemetry_streaming(runId, companyName, taxId);
 			} catch (err) {
-				if (wizardError) wizardError.innerText = "Failed to dispatch analysis job: " + err.message;
+				if (wizardError) wizardError.innerText = "Сетевая ошибка при отправке задачи: " + err.message;
 				if (btn) {
 					btn.disabled = false;
 					btn.innerText = "🚀 Start Multi-Document Risk Analysis";
@@ -316,7 +655,7 @@ function init_wizard() {
 }
 
 // =========================================================================
-// 4. REAL-TIME SSE STREAM TELEMETRY (/api/v1/analysis/stream/{run_id})
+// 5. REAL-TIME SSE STREAM TELEMETRY
 // =========================================================================
 
 function clear_terminal() {
@@ -380,7 +719,6 @@ function update_submodule_badge(code, status, verdict) {
 }
 
 function start_telemetry_streaming(runId, companyName, taxId) {
-	// Reveal telemetry section
 	const telemetrySection = document.getElementById("telemetry-section");
 	if (telemetrySection) telemetrySection.style.display = "block";
 	telemetrySection.scrollIntoView({ behavior: "smooth" });
@@ -390,20 +728,22 @@ function start_telemetry_streaming(runId, companyName, taxId) {
 	document.getElementById("display-tax-id").innerText = taxId;
 
 	clear_terminal();
-	append_terminal("INFO", "SYS", `Connecting to telemetry stream for run ${runId}...`);
+	append_terminal("INFO", "SYS", `Подключение к потоку телеметрии для задачи ${runId}...`);
 
 	if (activeEventSource) {
 		activeEventSource.close();
+		activeEventSource = null;
 	}
 
-	const sseUrl = `/api/v1/analysis/stream/${runId}`;
+	const tokenParam = (currentUser && currentUser.access_token) ? `?token=${encodeURIComponent(currentUser.access_token)}` : "";
+	const sseUrl = `/api/v1/analysis/stream/${runId}${tokenParam}`;
 	activeEventSource = new EventSource(sseUrl);
 
 	activeEventSource.addEventListener("PIPELINE_STAGE_CHANGED", (e) => {
 		try {
 			const data = JSON.parse(e.data);
 			update_progress(data.progress_percentage || 50, data.stage || "PROCESSING");
-			append_terminal("INFO", "STAGE", `Transitioned to pipeline stage: ${data.stage}`);
+			append_terminal("INFO", "STAGE", `Переход на этап: ${data.stage}`);
 		} catch (err) {
 			console.error("Error parsing PIPELINE_STAGE_CHANGED:", err);
 		}
@@ -430,11 +770,21 @@ function start_telemetry_streaming(runId, companyName, taxId) {
 	activeEventSource.addEventListener("PIPELINE_COMPLETE", (e) => {
 		try {
 			const data = JSON.parse(e.data);
-			append_terminal("INFO", "DONE", `Evaluation completed. Final score: ${data.universal_score}`);
+			append_terminal("INFO", "DONE", `Расчет завершен. Итоговый скоринг: ${data.universal_score}`);
 			update_progress(100, "COMPLETED");
 			document.getElementById("run-status-badge").innerText = "COMPLETED";
 			document.getElementById("run-status-badge").className = "badge badge-success";
-			if (activeEventSource) activeEventSource.close();
+
+			const btn = document.getElementById("btn-start-analysis");
+			if (btn) {
+				btn.disabled = false;
+				btn.innerText = "🚀 Start Multi-Document Risk Analysis";
+			}
+
+			if (activeEventSource) {
+				activeEventSource.close();
+				activeEventSource = null;
+			}
 			fetch_and_render_report(runId);
 		} catch (err) {
 			console.error("Error handling PIPELINE_COMPLETE:", err);
@@ -444,25 +794,53 @@ function start_telemetry_streaming(runId, companyName, taxId) {
 	activeEventSource.addEventListener("PIPELINE_FAILED", (e) => {
 		try {
 			const data = JSON.parse(e.data);
-			append_terminal("ERROR", "FAIL", `Pipeline execution failed: ${data.error}`);
+			append_terminal("ERROR", "FAIL", `Ошибка выполнения пайплайна: ${data.error}`);
 			document.getElementById("run-status-badge").innerText = "FAILED";
 			document.getElementById("run-status-badge").className = "badge badge-danger";
-			if (activeEventSource) activeEventSource.close();
+
+			const btn = document.getElementById("btn-start-analysis");
+			if (btn) {
+				btn.disabled = false;
+				btn.innerText = "🚀 Start Multi-Document Risk Analysis";
+			}
+
+			if (activeEventSource) {
+				activeEventSource.close();
+				activeEventSource = null;
+			}
 		} catch (err) {
 			console.error("Error handling PIPELINE_FAILED:", err);
 		}
 	});
 
 	activeEventSource.onerror = (err) => {
-		console.warn("EventSource connection encountered error / closed:", err);
-		// Try fetching report once after short delay in case stream finished cleanly
+		console.warn("EventSource closed or reconnecting:", err);
+		const btn = document.getElementById("btn-start-analysis");
+		if (btn) {
+			btn.disabled = false;
+			btn.innerText = "🚀 Start Multi-Document Risk Analysis";
+		}
 		setTimeout(() => fetch_and_render_report(runId), 2000);
 	};
 }
 
 // =========================================================================
-// 5. UNDERWRITING REPORT DOSSIER RENDERING
+// 6. UNDERWRITING REPORT DOSSIER & DIAGNOSTICS RENDERING
 // =========================================================================
+
+function toggle_feature_vector() {
+	const content = document.getElementById("feature-vector-content");
+	const icon = document.getElementById("fv-toggle-icon");
+	if (!content || !icon) return;
+
+	if (content.style.display === "none") {
+		content.style.display = "block";
+		icon.innerText = "▲ Свернуть";
+	} else {
+		content.style.display = "none";
+		icon.innerText = "▼ Развернуть";
+	}
+}
 
 async function fetch_and_render_report(runId) {
 	const headers = {};
@@ -479,20 +857,22 @@ async function fetch_and_render_report(runId) {
 		if (reportSection) reportSection.style.display = "block";
 		reportSection.scrollIntoView({ behavior: "smooth" });
 
-		// Score & verdicts
+		// Score banner
 		const scoreElem = document.getElementById("report-score");
 		if (scoreElem) scoreElem.innerText = (report.universal_score != null) ? Number(report.universal_score).toFixed(1) : "--";
 
 		const verdictElem = document.getElementById("report-verdict-badge");
 		if (verdictElem) {
-			verdictElem.innerText = report.risk_band || report.verdict || "UNKNOWN";
-			verdictElem.className = "badge " + (report.risk_band === "PRIME_LOW_RISK" ? "badge-success" : (report.risk_band === "HIGH_RISK_REJECT" ? "badge-danger" : "badge-warning"));
+			const riskCat = report.verdict_category || report.risk_band || "UNKNOWN";
+			verdictElem.innerText = VERDICT_TRANSLATIONS[riskCat] || riskCat;
+			verdictElem.className = "badge " + (riskCat === "PRIME_LOW_RISK" ? "badge-success" : (riskCat === "HIGH_RISK_REJECT" ? "badge-danger" : "badge-warning"));
 		}
 
 		const recElem = document.getElementById("report-rec-badge");
 		if (recElem) {
-			recElem.innerText = report.recommendation || report.verdict || "--";
-			recElem.className = "badge " + (report.recommendation === "APPROVED" ? "badge-success" : (report.recommendation === "REJECTED" ? "badge-danger" : "badge-info"));
+			const recVal = report.recommendation || report.decision || "--";
+			recElem.innerText = VERDICT_TRANSLATIONS[recVal] || recVal;
+			recElem.className = "badge " + (recVal === "APPROVED" ? "badge-success" : (recVal === "REJECTED" ? "badge-danger" : "badge-info"));
 		}
 
 		const pdElem = document.getElementById("report-pd");
@@ -503,22 +883,24 @@ async function fetch_and_render_report(runId) {
 		// LLM Executive Summary Memo
 		const memoElem = document.getElementById("report-memo");
 		if (memoElem) {
-			const summaryText = report.executive_summary || report.llm_final_summary || "No memorandum available.";
-			// Convert markdown headers and bolding to HTML
+			const summaryText = report.llm_final_summary || (report.llm_synthesis ? report.llm_synthesis.summary_markdown : "") || "Меморандум не сформирован.";
 			const htmlText = summaryText
-				.replace(/^### (.*$)/gim, '<h4>$1</h4>')
-				.replace(/^## (.*$)/gim, '<h3>$1</h3>')
-				.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-				.replace(/\n\n/g, '<br><br>')
-				.replace(/\n- (.*$)/gim, '<li>$1</li>');
+				.replace(/^### (.*$)/gim, "<h4>$1</h4>")
+				.replace(/^## (.*$)/gim, "<h3>$1</h3>")
+				.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+				.replace(/\n\n/g, "<br><br>")
+				.replace(/\n- (.*$)/gim, "<li>$1</li>");
 			memoElem.innerHTML = htmlText;
 		}
 
-		// Render Radar / Bar Chart SVG
+		// Render Radar / Pillar Chart SVG
 		render_submodules_chart(report.submodules || []);
 
-		// Render Submodules Cards
+		// Render Granular Submodules Breakdown Cards
 		render_submodule_cards(report.submodules || []);
+
+		// Render Canonical 18D Feature Vector Table
+		render_feature_vector_table(report.feature_vector || report.features || {});
 
 	} catch (err) {
 		console.error("Failed to render report dossier:", err);
@@ -532,8 +914,8 @@ function render_submodules_chart(submodules) {
 
 	if (!submodules || submodules.length === 0) return;
 
-	const barWidth = 40;
-	const barGap = 12;
+	const barWidth = 38;
+	const barGap = 14;
 	const maxBarHeight = 180;
 	const startX = 20;
 	const baseY = 240;
@@ -541,12 +923,13 @@ function render_submodules_chart(submodules) {
 	submodules.forEach((sm, i) => {
 		const x = startX + i * (barWidth + barGap);
 		const scoreVal = sm.impact_weight ? (sm.impact_weight * 100) : 50.0;
-		const h = (scoreVal / 100) * maxBarHeight;
+		const h = Math.max(10, (scoreVal / 100) * maxBarHeight);
 		const y = baseY - h;
 
-		const color = (sm.verdict === "STABLE" || sm.verdict === "PRIME" || sm.status === "ACTIVE") ? "#38bdf8" : (sm.status === "BYPASSED" ? "#fbbf24" : "#f87171");
+		const isOk = (sm.status === "SUCCESS" || sm.status === "COMPLETED");
+		const isBypassed = (sm.status === "DATA_ABSENT" || sm.status === "BYPASSED");
+		const color = isOk ? "#38bdf8" : (isBypassed ? "#fbbf24" : "#f87171");
 
-		// Bar rect
 		const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
 		rect.setAttribute("x", x);
 		rect.setAttribute("y", y);
@@ -556,14 +939,13 @@ function render_submodules_chart(submodules) {
 		rect.setAttribute("rx", "4");
 		svg.appendChild(rect);
 
-		// Label text
 		const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
 		text.setAttribute("x", x + barWidth / 2);
 		text.setAttribute("y", baseY + 18);
 		text.setAttribute("text-anchor", "middle");
 		text.setAttribute("fill", "var(--clr-fg)");
 		text.setAttribute("font-size", "11px");
-		text.textContent = (sm.submodule_id || `SM${i+1}`).slice(0, 5);
+		text.textContent = (sm.submodule_id || `SM${i+1}`).split("_")[0];
 		svg.appendChild(text);
 	});
 }
@@ -574,111 +956,119 @@ function render_submodule_cards(submodules) {
 	container.innerHTML = "";
 
 	submodules.forEach(sm => {
+		const shortCode = (sm.submodule_id || "").split("_")[0] || "SM";
+		const dict = SUBMODULE_DICTIONARY_RU[shortCode] || {};
+
 		const card = document.createElement("div");
 		card.className = "submodule-report-card";
 
-		const header = document.createElement("div");
-		header.className = "sm-card-header";
-		header.innerHTML = `
-			<h4>[${sm.submodule_id || "SM"}] ${sm.title || "Diagnostic Submodule"}</h4>
-			<span class="badge ${sm.status === 'ACTIVE' ? 'badge-success' : (sm.status === 'BYPASSED' ? 'badge-warning' : 'badge-info')}">
-				${sm.status || 'ACTIVE'}
-			</span>
+		const cardTitle = dict.title || sm.name || sm.title || sm.submodule_id;
+		const cardDesc = dict.description || "";
+
+		let statusBadgeClass = "badge-info";
+		let statusLabel = sm.status || "ACTIVE";
+		if (sm.status === "SUCCESS" || sm.status === "COMPLETED") {
+			statusBadgeClass = "badge-success";
+			statusLabel = "УСПЕШНО";
+		} else if (sm.status === "DATA_ABSENT" || sm.status === "BYPASSED") {
+			statusBadgeClass = "badge-warning";
+			statusLabel = "ПРОПУЩЕН (НЕТ ДАННЫХ)";
+		} else if (sm.status === "ERROR" || sm.status === "FAILED") {
+			statusBadgeClass = "badge-danger";
+			statusLabel = "ОШИБКА";
+		}
+
+		const verdictRu = (dict.verdicts && dict.verdicts[sm.verdict]) || sm.verdict || "Оценка выполнена";
+		const weightStr = sm.impact_weight ? `${(sm.impact_weight * 100).toFixed(1)}%` : "N/A";
+
+		// Submodule computed indices chips
+		let indicesHtml = "";
+		if (sm.indices && Object.keys(sm.indices).length > 0) {
+			const chips = Object.entries(sm.indices).map(([idxKey, idxVal]) => {
+				const label = (dict.index_labels && dict.index_labels[idxKey]) || idxKey;
+				let valClass = "secondary";
+				let valText = "Н/Д";
+				if (idxVal !== null && idxVal !== undefined) {
+					const num = Number(idxVal);
+					valText = num.toFixed(1);
+					if (num < 40) valClass = "danger";
+					else if (num <= 70) valClass = "warning";
+					else valClass = "success";
+				}
+				return `
+					<div class="sm-index-chip">
+						<span class="chip-name" title="${label}">${label}</span>
+						<span class="chip-val ${valClass}">${valText}${idxVal !== null && idxVal !== undefined ? " / 100" : ""}</span>
+					</div>
+				`;
+			}).join("");
+			indicesHtml = `<div class="sm-indices-grid">${chips}</div>`;
+		}
+
+		const summaryText = sm.dry_report || sm.diagnostic_report || sm.summary || "Диагностические показатели обработаны успешно.";
+
+		card.innerHTML = `
+			<div class="sm-card-header">
+				<div class="sm-card-title-group">
+					<h4>${cardTitle}</h4>
+					<div class="sm-card-desc">${cardDesc}</div>
+				</div>
+				<span class="badge ${statusBadgeClass}">${statusLabel}</span>
+			</div>
+			<div class="sm-card-body">
+				<p><strong>Вердикт:</strong> ${verdictRu}</p>
+				<p><strong>Вес фактора в скоринге:</strong> ${weightStr}</p>
+				${indicesHtml}
+				<div class="diagnostic-text">${summaryText}</div>
+			</div>
 		`;
 
-		const body = document.createElement("div");
-		body.className = "sm-card-body";
-		body.innerHTML = `
-			<p><strong>Verdict:</strong> ${sm.verdict || "Evaluated"}</p>
-			<p><strong>Impact Weight:</strong> ${sm.impact_weight ? (sm.impact_weight * 100).toFixed(1) + '%' : "N/A"}</p>
-			<div class="diagnostic-text">${sm.diagnostic_report || sm.summary || "Diagnostic metrics processed successfully."}</div>
-		`;
-
-		card.appendChild(header);
-		card.appendChild(body);
 		container.appendChild(card);
 	});
 }
 
-function clear_report() {
-	const company_name = document.getElementById("company_name");
-	if (company_name) company_name.value = company_name.placeholder;
+function render_feature_vector_table(featureVector) {
+	const tableBody = document.getElementById("indices-table-body");
+	if (!tableBody) return;
 
-	const input_tax_id = document.getElementById("input_tax_id");
-	if (input_tax_id) input_tax_id.value = input_tax_id.placeholder;
+	tableBody.innerHTML = CANONICAL_18D_METADATA_RU.map(meta => {
+		const val = featureVector[meta.key];
+		let valDisplay = "Н/Д";
+		let riskClass = "badge";
+		let riskLabel = "Данные отсутствуют";
 
-	const industry_code = document.getElementById("industry_code");
-	if (industry_code) industry_code.value = industry_code.placeholder;
+		if (val !== null && val !== undefined) {
+			const num = Number(val);
+			valDisplay = `${num.toFixed(1)} / 100`;
+			if (num < 40) {
+				riskClass = "badge badge-danger";
+				riskLabel = "Критический риск (< 40)";
+			} else if (num <= 70) {
+				riskClass = "badge badge-warning";
+				riskLabel = "Умеренный риск (40-70)";
+			} else {
+				riskClass = "badge badge-success";
+				riskLabel = "Надежный показатель (> 70)";
+			}
+		}
 
-	const name_statement = document.getElementById("name-statement");
-	if (name_statement) {
-		name_statement.innerHTML = "No file chosen";
-		verdictElem.className = "";
-	}
-
-	const name_invoices = document.getElementById("name-invoices");
-	if (name_invoices) {
-		name_invoices.innerHTML = "No file chosen";
-		verdictElem.className = "";
-	}
-
-	const name_credits = document.getElementById("name-credits");
-	if (name_credits) {
-		name_credits.innerHTML = "No file chosen";
-		verdictElem.className = "";
-	}
-
-	const file_statement = document.getElementById("file-statement");
-	if (file_statement) file_statement.value = "";
-
-	const file_invoices = document.getElementById("file-invoices");
-	if (file_invoices) file_invoices.value = "";
-
-	const file_credits = document.getElementById("file-credits");
-	if (file_credits) file_credits.value = "";
-
-	const reportSection = document.getElementById("report-section");
-	if (reportSection) reportSection.style.display = "none";
-
-	// Score & verdicts
-	const scoreElem = document.getElementById("report-score");
-	if (scoreElem) scoreElem.innerText = "--";
-
-	const verdictElem = document.getElementById("report-verdict-badge");
-	if (verdictElem) {
-		verdictElem.innerText = "--";
-		verdictElem.className = "badge";
-	}
-
-	const recElem = document.getElementById("report-rec-badge");
-	if (recElem) {
-		recElem.innerText = "--";
-		recElem.className = "badge";
-	}
-
-	const pdElem = document.getElementById("report-pd");
-	if (pdElem) {
-		pdElem.innerText = "--%";
-	}
-
-	const memoElem = document.getElementById("report-memo");
-	if (memoElem) {
-		memoElem.innerHTML = "Awaiting analysis completion...";
-	}
-
-	const svg = document.getElementById("submodule-radar-svg");
-	if (svg) svg.innerHTML = "";
-
-	const container = document.getElementById("submodules-reports-list");
-	if (container) container.innerHTML = "";
+		return `
+			<tr>
+				<td><strong>${meta.title}</strong><br><small><code>${meta.key}</code></small></td>
+				<td><span class="badge">${meta.module}</span></td>
+				<td><strong>${valDisplay}</strong></td>
+				<td><span class="${riskClass}">${riskLabel}</span></td>
+				<td><small>${meta.desc}</small></td>
+			</tr>
+		`;
+	}).join("");
 }
 
-
 // =========================================================================
-// 6. INITIALIZATION HOOK
+// 7. INITIALIZATION HOOK
 // =========================================================================
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener("DOMContentLoaded", function() {
 	restore_theme();
 	upd_status();
 	init_auth();
