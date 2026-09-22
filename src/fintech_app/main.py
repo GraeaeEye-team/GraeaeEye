@@ -69,7 +69,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     real_exc,
                 )
                 try:
-                    from fintech_app.db.mock_connection import MockDatabase
+                    from .db.mock_connection import MockDatabase
 
                     mock_inst = MockDatabase.get_instance()
                     await mock_inst.open()

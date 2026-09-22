@@ -247,18 +247,22 @@ function upd_status() {
 		});
 }
 
+const ICON_SYSTEM = "🌗";
+const ICON_DARK = "🌙";
+const ICON_LIGHT = "🌣";
+
 function upd_theme() {
 	const button = document.getElementById("theming");
 	if (!button) return;
-	if (button.innerText === "🌗") {
+	if (button.innerText === ICON_SYSTEM) {
 		config.setTheme("dark");
-		button.innerText = "🌙";
-	} else if (button.innerText === "🌙") {
+		button.innerText = ICON_DARK;
+	} else if (button.innerText === ICON_DARK) {
 		config.setTheme("light");
-		button.innerText = "🌣";
+		button.innerText = ICON_LIGHT;
 	} else {
 		config.setTheme("system");
-		button.innerText = "🌗";
+		button.innerText = ICON_SYSTEM;
 	}
 }
 
@@ -267,9 +271,9 @@ function restore_theme() {
 	if (!button) return;
 	config.getTheme().then(theme => {
 		switch (theme) {
-			case "dark": button.innerText = "🌙"; break;
-			case "light": button.innerText = "🌣"; break;
-			default: button.innerText = "🌗";
+			case "dark": button.innerText = ICON_DARK; break;
+			case "light": button.innerText = ICON_LIGHT; break;
+			default: button.innerText = ICON_SYSTEM;
 		}
 	});
 }
@@ -296,6 +300,7 @@ function update_auth_ui() {
 		if (roleElem) roleElem.innerText = currentUser.role || "ANALYST";
 		if (emailElem) emailElem.innerText = currentUser.email || "";
 	} else {
+		clear_report();
 		if (guestBlock) guestBlock.style.display = "block";
 		if (loggedInBlock) loggedInBlock.style.display = "none";
 		if (workspace) workspace.style.display = "none";

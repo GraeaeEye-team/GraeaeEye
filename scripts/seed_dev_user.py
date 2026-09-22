@@ -15,14 +15,11 @@ from uuid import uuid4
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
-from fintech_app.auth.security import hash_password
-from fintech_app.core.config import settings
-from fintech_app.db.mock_connection import MockDatabase
+from ..auth.security import hash_password
+from ..core.config import settings
+from ..db.mock_connection import MockDatabase
 
-try:
-    from fintech_app.db.connection import Database
-except ImportError:
-    Database = None  # type: ignore
+from ..db.connection import Database
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger("seed_dev_user")
