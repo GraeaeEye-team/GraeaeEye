@@ -9,7 +9,7 @@ class ConfigSingleton {
 		this.applyTheme();
 	}
 
-	async set(name, value) {
+	set(name, value) {
 		try {
 			localStorage.setItem(name, value);
 		} catch (e) {
@@ -17,7 +17,7 @@ class ConfigSingleton {
 		}
 	}
 
-	async get(name, defaultValue) {
+	get(name, defaultValue) {
 		try {
 			const local = localStorage.getItem(name);
 			return (local !== null) ? local : defaultValue;
@@ -26,18 +26,18 @@ class ConfigSingleton {
 		}
 	}
 
-	async applyTheme() {
-		const theme = await this.getTheme();
+	applyTheme() {
+		const theme = this.getTheme();
 		document.documentElement.setAttribute('data-theme', theme);
 	}
 
-	async setTheme(newTheme) {
-		await this.set('theme', newTheme);
-		await this.applyTheme();
+	setTheme(newTheme) {
+		this.set('theme', newTheme);
+		this.applyTheme();
 	}
 
-	async getTheme(defaultValue = "system") {
-		return await this.get("theme", defaultValue);
+	getTheme(defaultValue = "system") {
+		return this.get("theme", defaultValue);
 	}
 }
 
@@ -93,13 +93,11 @@ function upd_theme() {
 function restore_theme() {
 	const button = document.getElementById("theming");
 	if (!button) return;
-	config.getTheme().then(theme => {
-		switch (theme) {
-			case "dark": button.innerText = ICON_DARK; break;
-			case "light": button.innerText = ICON_LIGHT; break;
-			default: button.innerText = ICON_SYSTEM;
-		}
-	});
+	switch (config.getTheme()) {
+		case "dark": button.innerText = ICON_DARK; break;
+		case "light": button.innerText = ICON_LIGHT; break;
+		default: button.innerText = ICON_SYSTEM;
+	};
 }
 
 // =========================================================================
@@ -136,32 +134,32 @@ function init_auth() {
 	const loginError = document.getElementById("login-error");
 
 	if (loginForm) {
-		loginForm.addEventListener("submit", async (e) => {
+		loginForm.addEventListener("submit", (e) => {
 			e.preventDefault();
 			if (loginError) loginError.innerText = "";
 
 			const email = document.getElementById("login-email").value.trim();
 			const password = document.getElementById("login-password").value;
 
-			try {
-				const response = await fetch("/api/v1/auth/token", {
-					method: "POST",
-					headers: { "Content-Type": "application/x-www-form-urlencoded" },
-					body: new URLSearchParams({ username: email, password: password })
-				});
+			fetch("/api/v1/auth/token", {
+				method: "POST",
+				headers: { "Content-Type": "application/x-www-form-urlencoded" },
+				body: new URLSearchParams({ username: email, password: password })
+			})
+				.then((response) => response.json())
+				.then((data) => {
+					if (!response.ok) {
+						if (loginError) loginError.innerText = data.detail || "Authentication failed.";
+						return;
+					}
 
-				const data = await response.json();
-				if (!response.ok) {
-					if (loginError) loginError.innerText = data.detail || "Authentication failed.";
-					return;
-				}
-
-				currentUser = data;
-				sessionStorage.setItem("user", JSON.stringify(data));
-				update_auth_ui();
-			} catch (err) {
-				if (loginError) loginError.innerText = "Network error connecting to auth server.";
-			}
+					currentUser = data;
+					sessionStorage.setItem("user", JSON.stringify(data));
+					update_auth_ui();
+				})
+				.catch(() => {
+					if (loginError) loginError.innerText = "Network error connecting to auth server.";
+				})
 		});
 	}
 
@@ -169,7 +167,7 @@ function init_auth() {
 	const registerError = document.getElementById("register-error");
 
 	if (registerForm) {
-		registerForm.addEventListener("submit", async (e) => {
+		registerForm.addEventListener("submit", (e) => {
 			e.preventDefault();
 			if (registerError) registerError.innerText = "";
 
@@ -177,25 +175,25 @@ function init_auth() {
 			const email = document.getElementById("register-email").value.trim();
 			const password = document.getElementById("register-password").value;
 
-			try {
-				const response = await fetch("/api/v1/auth/register", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ email: email, password: password, full_name: fullName })
+			fetch("/api/v1/auth/register", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({ email: email, password: password, full_name: fullName })
+			})
+				.then( (response) => response.json())
+				.then( (data) => {
+					if (!response.ok) {
+						if (registerError) registerError.innerText = data.detail || "Registration failed.";
+						return;
+					}
+
+					currentUser = data;
+					sessionStorage.setItem("user", JSON.stringify(data));
+					update_auth_ui();
+				})
+				.catch(() => {
+					if (registerError) registerError.innerText = "Network error connecting to auth server."
 				});
-
-				const data = await response.json();
-				if (!response.ok) {
-					if (registerError) registerError.innerText = data.detail || "Registration failed.";
-					return;
-				}
-
-				currentUser = data;
-				sessionStorage.setItem("user", JSON.stringify(data));
-				update_auth_ui();
-			} catch (err) {
-				if (registerError) registerError.innerText = "Network error connecting to auth server.";
-			}
 		});
 	}
 
@@ -249,7 +247,7 @@ function init_wizard() {
 	const wizardError = document.getElementById("wizard-error");
 
 	if (analysisForm) {
-		analysisForm.addEventListener("submit", async (e) => {
+		analysisForm.addEventListener("submit", (e) => {
 			e.preventDefault();
 			if (wizardError) wizardError.innerText = "";
 
@@ -285,32 +283,32 @@ function init_wizard() {
 				btn.innerText = "Dispatching pipeline...";
 			}
 
-			try {
-				const response = await fetch("/api/v1/analysis/start", {
-					method: "POST",
-					headers: headers,
-					body: formData
-				});
+			fetch("/api/v1/analysis/start", {
+				method: "POST",
+				headers: headers,
+				body: formData
+			})
+				.then((response) => response.json())
+				.then((data) => {
+					if (!response.ok) {
+						if (wizardError) wizardError.innerText = data.detail || "Failed to start analysis.";
+						if (btn) {
+							btn.disabled = false;
+							btn.innerText = "🚀 Start Multi-Document Risk Analysis";
+						}
+						return;
+					}
 
-				const data = await response.json();
-				if (!response.ok) {
-					if (wizardError) wizardError.innerText = data.detail || "Failed to start analysis.";
+					const runId = data.run_id;
+					start_telemetry_streaming(runId, companyName, taxId);
+				})
+				.catch((err) => {
+					if (wizardError) wizardError.innerText = "Failed to dispatch analysis job: " + err.message;
 					if (btn) {
 						btn.disabled = false;
 						btn.innerText = "🚀 Start Multi-Document Risk Analysis";
 					}
-					return;
-				}
-
-				const runId = data.run_id;
-				start_telemetry_streaming(runId, companyName, taxId);
-			} catch (err) {
-				if (wizardError) wizardError.innerText = "Failed to dispatch analysis job: " + err.message;
-				if (btn) {
-					btn.disabled = false;
-					btn.innerText = "🚀 Start Multi-Document Risk Analysis";
-				}
-			}
+				});
 		});
 	}
 }
@@ -464,65 +462,69 @@ function start_telemetry_streaming(runId, companyName, taxId) {
 // 5. UNDERWRITING REPORT DOSSIER RENDERING
 // =========================================================================
 
-async function fetch_and_render_report(runId) {
+function fetch_and_render_report(runId) {
 	const headers = {};
 	if (currentUser && currentUser.access_token) {
 		headers["Authorization"] = `Bearer ${currentUser.access_token}`;
 	}
 
-	try {
-		const resp = await fetch(`/api/v1/analysis/report/${runId}`, { headers });
-		if (!resp.ok) return;
-		const report = await resp.json();
+	fetch(`/api/v1/analysis/report/${runId}`, { headers })
+		.then((resp) => {
+			if (!resp.ok)  {
+				throw new Error("Guard failed: resp is not ok");
+			}
+			return resp.json()})
+		.then((report) => {
 
-		const reportSection = document.getElementById("report-section");
-		if (reportSection) reportSection.style.display = "block";
-		reportSection.scrollIntoView({ behavior: "smooth" });
+			const reportSection = document.getElementById("report-section");
+			if (reportSection) reportSection.style.display = "block";
+			reportSection.scrollIntoView({ behavior: "smooth" });
 
-		// Score & verdicts
-		const scoreElem = document.getElementById("report-score");
-		if (scoreElem) scoreElem.innerText = (report.universal_score != null) ? Number(report.universal_score).toFixed(1) : "--";
+			// Score & verdicts
+			const scoreElem = document.getElementById("report-score");
+			if (scoreElem) scoreElem.innerText = (report.universal_score != null) ? Number(report.universal_score).toFixed(1) : "--";
 
-		const verdictElem = document.getElementById("report-verdict-badge");
-		if (verdictElem) {
-			verdictElem.innerText = report.risk_band || report.verdict || "UNKNOWN";
-			verdictElem.className = "badge " + (report.risk_band === "PRIME_LOW_RISK" ? "badge-success" : (report.risk_band === "HIGH_RISK_REJECT" ? "badge-danger" : "badge-warning"));
-		}
+			const verdictElem = document.getElementById("report-verdict-badge");
+			if (verdictElem) {
+				verdictElem.innerText = report.risk_band || report.verdict || "UNKNOWN";
+				verdictElem.className = "badge " + (report.risk_band === "PRIME_LOW_RISK" ? "badge-success" : (report.risk_band === "HIGH_RISK_REJECT" ? "badge-danger" : "badge-warning"));
+			}
 
-		const recElem = document.getElementById("report-rec-badge");
-		if (recElem) {
-			recElem.innerText = report.recommendation || report.verdict || "--";
-			recElem.className = "badge " + (report.recommendation === "APPROVED" ? "badge-success" : (report.recommendation === "REJECTED" ? "badge-danger" : "badge-info"));
-		}
+			const recElem = document.getElementById("report-rec-badge");
+			if (recElem) {
+				recElem.innerText = report.recommendation || report.verdict || "--";
+				recElem.className = "badge " + (report.recommendation === "APPROVED" ? "badge-success" : (report.recommendation === "REJECTED" ? "badge-danger" : "badge-info"));
+			}
 
-		const pdElem = document.getElementById("report-pd");
-		if (pdElem) {
-			pdElem.innerText = (report.probability_of_default != null) ? `${(Number(report.probability_of_default) * 100).toFixed(2)}%` : "--%";
-		}
+			const pdElem = document.getElementById("report-pd");
+			if (pdElem) {
+				pdElem.innerText = (report.probability_of_default != null) ? `${(Number(report.probability_of_default) * 100).toFixed(2)}%` : "--%";
+			}
 
-		// LLM Executive Summary Memo
-		const memoElem = document.getElementById("report-memo");
-		if (memoElem) {
-			const summaryText = report.executive_summary || report.llm_final_summary || "No memorandum available.";
-			// Convert markdown headers and bolding to HTML
-			const htmlText = summaryText
-				.replace(/^### (.*$)/gim, '<h4>$1</h4>')
-				.replace(/^## (.*$)/gim, '<h3>$1</h3>')
-				.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-				.replace(/\n\n/g, '<br><br>')
-				.replace(/\n- (.*$)/gim, '<li>$1</li>');
-			memoElem.innerHTML = htmlText;
-		}
+			// LLM Executive Summary Memo
+			const memoElem = document.getElementById("report-memo");
+			if (memoElem) {
+				const summaryText = report.executive_summary || report.llm_final_summary || "No memorandum available.";
+				// Convert markdown headers and bolding to HTML
+				const htmlText = summaryText
+					.replace(/^### (.*$)/gim, '<h4>$1</h4>')
+					.replace(/^## (.*$)/gim, '<h3>$1</h3>')
+					.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+					.replace(/\n\n/g, '<br><br>')
+					.replace(/\n- (.*$)/gim, '<li>$1</li>');
+				memoElem.innerHTML = htmlText;
+			}
 
-		// Render Radar / Bar Chart SVG
-		render_submodules_chart(report.submodules || []);
+			// Render Radar / Bar Chart SVG
+			render_submodules_chart(report.submodules || []);
 
-		// Render Submodules Cards
-		render_submodule_cards(report.submodules || []);
+			// Render Submodules Cards
+			render_submodule_cards(report.submodules || []);
 
-	} catch (err) {
-		console.error("Failed to render report dossier:", err);
-	}
+		}).catch((err) => {
+			console.error("Failed to render report dossier:", err)
+		})
+
 }
 
 function render_submodules_chart(submodules) {
